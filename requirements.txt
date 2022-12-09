@@ -1,0 +1,4 @@
+# Eventually, this'll be replaced by an in-house tool.
+python-dotenv==0.21.0
+beanie==1.15.4
+arq==0.25.0
