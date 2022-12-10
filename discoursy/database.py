@@ -19,6 +19,7 @@ class User(Document):
     username: str = Field(min_length=1, max_length=30)
     discriminator: str = Field(min_length=4, max_length=4)
     email: str = Field(min_length=5, max_length=15)
+    password: str = Field(exclude=True)
     flags: int
     system: bool
     deletor_job_id: str | None
