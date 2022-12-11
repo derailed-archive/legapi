@@ -35,7 +35,7 @@ class RateLimiter(Extension):
     async def _increase_ip_tendency(self, request: Request) -> bool:
         if self._redis:
             if not await self._redis.exists(request.ip):
-                await self._redis.set(request.ip, 0, ex=1800)
+                await self._redis.set(request.ip, 0, ex=3600)
             await self._redis.incr(request.ip)
 
             value = await self._redis.get(request.ip)
