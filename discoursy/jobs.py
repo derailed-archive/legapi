@@ -40,6 +40,11 @@ async def delete_guild_members(ctx, guild_id: str) -> None:
 
 
 class WorkerSettings:
-    functions = [delete_user, chunk_guild, delete_channel_messages, delete_guild_members]
+    functions = [
+        delete_user,
+        chunk_guild,
+        delete_channel_messages,
+        delete_guild_members,
+    ]
     redis_settings = redis_settings
     allow_abort_jobs = True

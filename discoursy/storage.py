@@ -9,7 +9,7 @@ import secrets
 from .database import User
 from typing import Any
 from sanic import Sanic
-from typing import TYPE_CHECKING
+
 
 class Snowflake:
     def __init__(self, epoch: int = 1672534800000) -> None:
@@ -62,6 +62,7 @@ class Exchange:
         except itsdangerous.BadSignature:
             return False
 
+
 class Storage:
     def __init__(self, app: Sanic) -> None:
         self._cache: dict[str, Any] = {}
@@ -97,4 +98,3 @@ class Storage:
             return await User.find_one(User.id == user_id)
         else:
             return cached
- 

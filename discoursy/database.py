@@ -5,14 +5,14 @@ from typing import Literal
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 
+
 async def start_db() -> None:
     client = AsyncIOMotorClient(os.environ['mongodb_uri'])
     await init_beanie(
         client,
-        document_models=[
-            User, Settings, Guild, Member, Invite, Presence, Message, Channel # type: ignore
-        ]
+        document_models=[User, Settings, Guild, Member, Invite, Presence, Message, Channel],  # type: ignore
     )
+
 
 class User(Document):
     id: str
@@ -26,10 +26,12 @@ class User(Document):
     suspended: bool
     pronouns: str = Field('undefined', max_length=10, min_length=1)
 
+
 class Settings(Document):
     user_id: str
     status: Literal['online', 'offline', 'dnd']
     guild_order: list[int]
+
 
 class Guild(Document):
     id: str
@@ -41,37 +43,46 @@ class Guild(Document):
     joinable: bool
     unjoinable_reason: str | None
 
+
 class Member(Document):
     user_id: str
     guild_id: str
     nick: str
+
 
 class Invite(Document):
     code: str
     guild_id: str
     author_id: str
 
+
 class Activity(BaseModel):
     name: str
     type: int
     created_at: datetime
 
+
 class StatusableActivity(Activity):
     content: str
 
+
 class GameActivity(StatusableActivity):
     game_id: str
+
 
 class Stream(BaseModel):
     platform: Literal['youtube', 'twitch']
     platform_user: str
     stream_id: str | None
 
+
 class StreamActivity(StatusableActivity):
     stream: Stream
 
+
 class CustomActivity(StatusableActivity):
     emoji_id: str
+
 
 class Presence(Document):
     user_id: str
@@ -80,6 +91,7 @@ class Presence(Document):
     activities: list[StatusableActivity | GameActivity | StreamActivity | CustomActivity]
     status: Literal['online', 'offline', 'dnd']
 
+
 class Message(Document):
     id: str
     author_id: str
@@ -87,6 +99,7 @@ class Message(Document):
     channel_id: str
     timestamp: datetime
     edited_timestamp: datetime | None = Field(None)
+
 
 # Types
 # User-to-User: 0

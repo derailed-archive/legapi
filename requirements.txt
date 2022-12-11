@@ -6,3 +6,4 @@ sanic[ext]==22.9.1
 limits==2.7.1
 itsdangerous==2.1.2
 msgspec==0.10.1
+coredis==4.10.0

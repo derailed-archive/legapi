@@ -16,7 +16,6 @@ exclude = [
 ignore = []
 line-length = 110
 select = [
-    'D102',
     'D104',
     'D105',
     'D106',
@@ -62,5 +61,4 @@ fix = true
 [tool.ruff.flake8-quotes]
 inline-quotes = "single"
 multiline-quotes = "single"
-avoid-escape = false
 docstring-quotes = "double"
