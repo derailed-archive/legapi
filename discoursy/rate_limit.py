@@ -138,7 +138,7 @@ class RateLimiter(Extension):
 
     async def _setup(self, app: Sanic) -> None:
         self.limits = {}
-        redis_uri = os.getenv('redis_uri')
+        redis_uri = os.getenv('REDIS_URI')
 
         self.limiter = FixedWindowElasticExpiryRateLimiter(MemoryStorage())
         self.limiter.storage = RedisStorage(redis_uri) if redis_uri is not None else MemoryStorage()
