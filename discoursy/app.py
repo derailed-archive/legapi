@@ -7,6 +7,7 @@ from sanic_ext import Extend
 
 from .rate_limit import RateLimiter
 from .storage import Exchange, Snowflake, Storage
+from .database import start_db
 
 app = Sanic('discoursy', loads=json.decode, dumps=json.encode)
 app.config.FALLBACK_ERROR_FORMAT = 'json'
@@ -19,6 +20,7 @@ Extend.register(RateLimiter)
 
 @app.before_server_start
 async def setup(app: Sanic) -> None:
+    await start_db()
     asyncio.create_task(storage.clear_cache())
 
 

@@ -4,13 +4,16 @@ from typing import Any
 from arq.connections import RedisSettings
 from dotenv import load_dotenv
 
-from discoursy.database import (Channel, Member, Message, Presence, Settings,
-                                User)
+from discoursy.database import Channel, Member, Message, Presence, Settings, User, start_db
 
 load_dotenv()
 
 
 redis_settings = RedisSettings(host=os.environ['redis_host'], port=int(os.environ['redis_port']))
+
+
+async def startup(ctx) -> None:
+    await start_db()
 
 
 async def delete_user(ctx, user_id: str) -> None:
@@ -50,3 +53,4 @@ class WorkerSettings:
     ]
     redis_settings = redis_settings
     allow_abort_jobs = True
+    on_startup = startup
