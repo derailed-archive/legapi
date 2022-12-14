@@ -1,5 +1,7 @@
 import os
+from datetime import datetime
 from time import time
+from typing import TYPE_CHECKING
 
 import coredis
 from limits import RateLimitItem, parse
@@ -34,7 +36,7 @@ class RateLimiter(Extension):
             }
         return {'retry_after': exc.retry_after, 'global': exc.global_rate_limit}
 
-    async def _increase_ip_tendency(self, request: Request) -> bool:
+    async def _increase_ip_tendency(self, request: Request) -> tuple[bool, int | float]:
         if self._redis:
             if not await self._redis.exists(request.ip):
                 await self._redis.set(request.ip, 0, ex=3600)
@@ -42,19 +44,50 @@ class RateLimiter(Extension):
 
             value = await self._redis.get(request.ip)
             if int(value) == 60:
-                return False
+                exp = await self._redis.ttl(request.ip)
+                return False, exp
             else:
-                return True
+                return True, 0
         else:
             if self._storage.get(request.ip) is None:
                 self._storage[request.ip] = 0
+                self._storage[request.ip + 'exp'] = datetime.utcnow()
             self._storage[request.ip] += 1
 
             value = self._storage[request.ip]
+            diff = datetime.utcnow() - self._storage[request.ip + 'exp']
+
+            if TYPE_CHECKING:
+                diff = datetime() - datetime()
+
+            if diff.seconds == 3600:
+                self._storage[request.ip] = 0
+                self._storage[request.ip + 'exp'] = datetime.utcnow()
+
             if int(value) == 60:
-                return False
+                return False, diff.total_seconds()
+
+            return True, 0
+
+    async def _get_ip_tendency(self, request: Request) -> tuple[bool, int | float]:
+        if self._redis:
+            value = await self._redis.get(request.ip)
+            if int(value) == 60:
+                exp = await self._redis.ttl(request.ip)
+                return False, exp
             else:
-                return True
+                return True, 0
+        else:
+            value = self._storage[request.ip]
+            diff = datetime.utcnow() - self._storage[request.ip + 'exp']
+
+            if TYPE_CHECKING:
+                diff = datetime() - datetime()
+
+            if int(value) == 60:
+                return False, diff.total_seconds()
+
+            return True, 0
 
     async def call(self, request: Request) -> None:
         try:
@@ -85,7 +118,7 @@ class RateLimiter(Extension):
         if glbl is False:
             stats = await self.limiter.get_window_stats(self.glbl, request.ip, route.path)
             tendant = await self._increase_ip_tendency(request=request)
-            raise RateLimited(stats[0], True, tendant)
+            raise RateLimited(stats[0], True, tendant[0])
 
         if user:
             if limit:
@@ -137,6 +170,13 @@ class RateLimiter(Extension):
 
         if limit:
             response.headers.add('X-RateLimit-Limit', limit.amount)
+
+        ip_tendent = await self._get_ip_tendency(request=request)
+
+        if ip_tendent[0] is False:
+            response.headers.pop('X-RateLimit-Reset')
+            response.headers.add('X-RateLimit-Reset', ip_tendent[1])
+            response.headers.pop('X-RateLimit-Reset-After')
 
     async def _setup(self, app: Sanic) -> None:
         self.limits = {}
