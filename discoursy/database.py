@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 
 
 async def start_db() -> None:
-    client = AsyncIOMotorClient(os.environ['mongodb_uri'])
+    client = AsyncIOMotorClient(os.environ['MONGO_URI'])
     await init_beanie(
-        client,
+        database=client.db_name,
         document_models=[User, Settings, Guild, Member, Invite, Presence, Message, Channel],  # type: ignore
     )
 
