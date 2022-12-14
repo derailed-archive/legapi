@@ -1,9 +1,10 @@
-from beanie import Document, init_beanie
-from pydantic import Field, BaseModel
+import os
 from datetime import datetime
 from typing import Literal
+
+from beanie import Document, init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
-import os
+from pydantic import BaseModel, Field
 
 
 async def start_db() -> None:

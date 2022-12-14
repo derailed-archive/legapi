@@ -1,9 +1,11 @@
 import os
+from typing import Any
 
 from arq.connections import RedisSettings
 from dotenv import load_dotenv
-from discoursy.database import User, Settings, Presence, Member, Channel, Message
-from typing import Any
+
+from discoursy.database import (Channel, Member, Message, Presence, Settings,
+                                User)
 
 load_dotenv()
 

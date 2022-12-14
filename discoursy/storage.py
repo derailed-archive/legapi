@@ -1,14 +1,16 @@
 import asyncio
-import threading
+import base64
 import os
+import secrets
+import threading
 import time
 from random import randint
-import itsdangerous
-import base64
-import secrets
-from .database import User
 from typing import Any
+
+import itsdangerous
 from sanic import Sanic
+
+from .database import User
 
 
 class Snowflake:

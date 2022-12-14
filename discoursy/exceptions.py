@@ -1,6 +1,7 @@
 from time import time
-from sanic.exceptions import SanicException
+
 from msgspec import json
+from sanic.exceptions import SanicException
 
 
 class RateLimited(SanicException):
