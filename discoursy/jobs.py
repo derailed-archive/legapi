@@ -4,7 +4,16 @@ from typing import Any
 from arq.connections import RedisSettings
 from dotenv import load_dotenv
 
-from discoursy.database import Channel, Member, Message, Presence, Settings, User, start_db
+from discoursy.database import (
+    Channel,
+    Member,
+    Message,
+    Presence,
+    Settings,
+    User,
+    client,
+    start_db,
+)
 
 load_dotenv()
 
@@ -17,10 +26,13 @@ async def startup(ctx) -> None:
 
 
 async def delete_user(ctx, user_id: str) -> None:
-    await User.find_one(User.id == user_id).delete()
-    await Settings.find_one(Settings.user_id == user_id).delete()
-    await Presence.find(Presence.user_id == user_id).delete()
-    await Member.find(Member.user_id == user_id).delete()
+    async with client.start_session() as s:
+        await s.start_transaction()
+        await User.find_one(User.id == user_id).delete(session=s)
+        await Settings.find_one(Settings.user_id == user_id).delete(session=s)
+        await Presence.find(Presence.user_id == user_id).delete(session=s)
+        await Member.find(Member.user_id == user_id).delete(session=s)
+        await s.commit_transaction()
 
 
 async def chunk_guild(ctx, guild_id: str) -> list[dict[str, Any]]:
@@ -36,8 +48,11 @@ async def delete_channel_messages(ctx, channel_id: str) -> None:
     if channel is None:
         return
 
-    await Message.find(Message.channel_id == channel_id).delete()
-    await channel.delete()
+    async with client.start_session() as s:
+        await s.start_transaction()
+        await Message.find(Message.channel_id == channel_id).delete(session=s)
+        await channel.delete(session=s)
+        await s.commit_transaction()
 
 
 async def delete_guild_members(ctx, guild_id: str) -> None:

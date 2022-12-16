@@ -1,18 +1,22 @@
 import os
 from datetime import datetime
 from typing import Literal
+from sanic import Request, exceptions
 
 from beanie import Document, init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
+import binascii
+
+client = AsyncIOMotorClient(os.environ['MONGO_URI'])
 
 
 async def start_db() -> None:
-    client = AsyncIOMotorClient(os.environ['MONGO_URI'])
     await init_beanie(
         database=client.db_name,
         document_models=[User, Settings, Guild, Member, Invite, Presence, Message, Channel],  # type: ignore
     )
+    
 
 
 class User(Document):
@@ -23,13 +27,36 @@ class User(Document):
     password: str = Field(exclude=True)
     flags: int
     system: bool
-    deletor_job_id: str | None
+    deletor_job_id: str | None = Field(exclude=True)
     suspended: bool
     pronouns: str = Field('undefined', max_length=10, min_length=1)
 
 
+async def authorize_user(request: Request) -> User:
+    authorization = request.headers.get('Authorization')
+
+    if authorization is None or not isinstance(authorization, str):
+        raise exceptions.InvalidHeader('Authorization is missing or an invalid type', 400)
+
+    try:
+        user_id = request.app.ctx.exchange.get_value(authorization)
+    except binascii.Error:
+        raise exceptions.InvalidHeader('Authorization is invalid', 401)
+
+    user = await User.find_one(User.id == user_id)
+
+    if user is None:
+        raise exceptions.InvalidHeader('Authorization is invalid', 401)
+
+    ok_signature = request.app.ctx.exchange.verify_signature(authorization, user.password)
+
+    if not ok_signature:
+        raise exceptions.InvalidHeader('Authorization is invalid', 401)
+
+    return user
+
+
 class Settings(Document):
-    user_id: str
     status: Literal['online', 'offline', 'dnd']
     guild_order: list[int]
 
