@@ -1,3 +1,4 @@
+from datetime import datetime
 from random import randint
 from typing import Any
 
@@ -6,6 +7,7 @@ from sanic import Blueprint, Request, exceptions, response
 from webargs import fields, validate
 from webargs_sanic.sanicparser import use_args
 
+from ..constants import jobber
 from ..database import Settings, User, authorize_user, client
 
 user_managing = Blueprint('user-management')
@@ -50,7 +52,7 @@ def generate_discriminator() -> str:
             validate=validate.OneOf(['he/him', 'she/her', 'undefined', 'they/them', 'it/is']),
         ),
     },
-    location='json_or_form'
+    location='json_or_form',
 )
 async def register_user(request: Request, user: dict[str, Any]) -> response.HTTPResponse:
     # checks
@@ -88,3 +90,35 @@ async def register_user(request: Request, user: dict[str, Any]) -> response.HTTP
 async def get_myself(request: Request) -> response.HTTPResponse:
     user = await authorize_user(request)
     return response.json(user.dict())
+
+
+@user_managing.post('/users/@me/delete')
+@use_args(
+    {
+        'password': fields.String(
+            required=True,
+            allow_none=False,
+            validate=(
+                validate.Length(
+                    min=8,
+                    max=30,
+                    error='Password is either under the length of 8 or over the length of 30',
+                )
+            ),
+        )
+    }
+)
+async def delete_myself(request: Request, delete_details: dict[str, str]) -> response.HTTPResponse:
+    user = await authorize_user(request)
+
+    match = password_hasher.verify(user.password, delete_details['password'])
+
+    if match is False:
+        raise exceptions.Unauthorized('Password does not match', 401)
+
+    deletor_id = request.app.ctx.snowflake.form()
+
+    user.deletor_job_id = deletor_id
+    await user.update()
+    await jobber.enqueue_job('delete_user', user_id=user.id, _job_id=deletor_id, _defer_by=7_776_000)
+    return response.json('', 204)

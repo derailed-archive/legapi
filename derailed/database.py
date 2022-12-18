@@ -1,13 +1,13 @@
+import binascii
 import logging
 import os
 from datetime import datetime
 from typing import Literal
-from sanic import Request, exceptions
 
 from beanie import Document, init_beanie
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
-import binascii
+from sanic import Request, exceptions
 
 client = AsyncIOMotorClient(os.environ['MONGO_URI'])
 
@@ -17,7 +17,6 @@ async def start_db() -> None:
         database=client.db_name,
         document_models=[User, Settings, Guild, Member, Invite, Presence, Message, Channel],  # type: ignore
     )
-    
 
 
 class User(Document):

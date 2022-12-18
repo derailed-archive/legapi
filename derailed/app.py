@@ -1,5 +1,4 @@
 import asyncio
-from time import time
 
 from dotenv import load_dotenv
 
@@ -10,6 +9,7 @@ from sanic import Request, Sanic
 from sanic import json as jsone
 from sanic_ext import Extend
 
+from .constants import setup_jobber
 from .database import start_db
 from .rate_limit import RateLimiter
 from .storage import Exchange, Snowflake, Storage
@@ -27,6 +27,7 @@ Extend.register(RateLimiter)
 
 @app.before_server_start
 async def setup(app: Sanic) -> None:
+    setup_jobber()
     await start_db()
     asyncio.create_task(storage.clear_cache())
 
