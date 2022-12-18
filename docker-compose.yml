@@ -1,0 +1,23 @@
+services:
+  derailed:
+    container_name: derailed
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - mongo
+    ports:
+      - "8000:8000"
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URI=redis://redis:6379
+      - MONGO_URI=mongodb://mongo:27017
+
+  redis:
+    image: eqalpha/keydb
+
+  mongo:
+    image: mongo
+    volumes:
+      - ./.data/db:/data/db

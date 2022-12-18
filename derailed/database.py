@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime
 from typing import Literal
@@ -23,13 +24,13 @@ class User(Document):
     id: str
     username: str = Field(min_length=1, max_length=30)
     discriminator: str = Field(min_length=4, max_length=4)
-    email: str = Field(min_length=5, max_length=15)
+    email: str = Field(min_length=5)
     password: str = Field(exclude=True)
     flags: int
     system: bool
     deletor_job_id: str | None = Field(exclude=True)
     suspended: bool
-    pronouns: str = Field('undefined', max_length=10, min_length=1)
+    pronouns: str | None = Field(None, max_length=10, min_length=1)
 
 
 async def authorize_user(request: Request) -> User:
@@ -40,23 +41,25 @@ async def authorize_user(request: Request) -> User:
 
     try:
         user_id = request.app.ctx.exchange.get_value(authorization)
-    except binascii.Error:
+    except binascii.Error as b:
+        logging.info(b)
         raise exceptions.InvalidHeader('Authorization is invalid', 401)
 
     user = await User.find_one(User.id == user_id)
 
     if user is None:
-        raise exceptions.InvalidHeader('Authorization is invalid', 401)
+        raise exceptions.InvalidHeader('Authorization is invalid or user granted has been deleted', 401)
 
     ok_signature = request.app.ctx.exchange.verify_signature(authorization, user.password)
 
     if not ok_signature:
-        raise exceptions.InvalidHeader('Authorization is invalid', 401)
+        raise exceptions.InvalidHeader('Authorization forged or old', 401)
 
     return user
 
 
 class Settings(Document):
+    id: str
     status: Literal['online', 'offline', 'dnd']
     guild_order: list[int]
 

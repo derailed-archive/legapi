@@ -14,7 +14,7 @@ from .database import User
 
 
 class Snowflake:
-    def __init__(self, epoch: int = 1672534800000) -> None:
+    def __init__(self, epoch: int = 1420070400000) -> None:
         self.incr: int = 0
         self.epoch = epoch
 

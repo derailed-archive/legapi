@@ -4,7 +4,7 @@ from typing import Any
 from arq.connections import RedisSettings
 from dotenv import load_dotenv
 
-from discoursy.database import (
+from derailed.database import (
     Channel,
     Member,
     Message,
@@ -26,8 +26,8 @@ async def startup(ctx) -> None:
 
 
 async def delete_user(ctx, user_id: str) -> None:
-    async with client.start_session() as s:
-        await s.start_transaction()
+    async with await client.start_session() as s:
+        s.start_transaction()
         await User.find_one(User.id == user_id).delete(session=s)
         await Settings.find_one(Settings.user_id == user_id).delete(session=s)
         await Presence.find(Presence.user_id == user_id).delete(session=s)
@@ -48,8 +48,8 @@ async def delete_channel_messages(ctx, channel_id: str) -> None:
     if channel is None:
         return
 
-    async with client.start_session() as s:
-        await s.start_transaction()
+    async with await client.start_session() as s:
+        s.start_transaction()
         await Message.find(Message.channel_id == channel_id).delete(session=s)
         await channel.delete(session=s)
         await s.commit_transaction()

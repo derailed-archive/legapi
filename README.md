@@ -41,7 +41,7 @@ Once you've got its uri, you can firmly add it as a ENV variable like on the Mon
 
 We currently follow no external versioning style to make development easier. In the future we may adopt one in which it it most likely will be like Discord's API Versioning.
 
-Internally though, we may use versioning. Like we may release Discoursy 0.1 to coinside new features and bug fixes.
+Internally though, we may use versioning. Like we may release Derailed 0.1 to coinside new features and bug fixes.
 In that case, we may use only semver.
 
 ### The Goal

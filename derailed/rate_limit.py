@@ -78,8 +78,8 @@ class RateLimiter(Extension):
             else:
                 return True, 0
         else:
-            value = self._storage[request.ip]
-            diff = datetime.utcnow() - self._storage[request.ip + 'exp']
+            value = self._storage.get(request.ip, 0)
+            diff = datetime.utcnow() - self._storage.get(request.ip + 'exp', datetime.utcnow())
 
             if TYPE_CHECKING:
                 diff = datetime() - datetime()
@@ -107,7 +107,7 @@ class RateLimiter(Extension):
 
         if auth:
             try:
-                user = self.app.ctx.storage.from_auth(auth)
+                user = await self.app.ctx.storage.from_auth(auth)
             except ValueError:
                 raise exceptions.Unauthorized('Invalid authorization', 401)
         else:
@@ -148,9 +148,9 @@ class RateLimiter(Extension):
 
         if auth:
             try:
-                user = self.app.ctx.storage.from_auth(auth)
+                user = await self.app.ctx.storage.from_auth(auth)
             except ValueError:
-                raise exceptions.Unauthorized('Invalid authorization', 401)
+                user = None
         else:
             user = None
 
