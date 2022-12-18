@@ -14,7 +14,7 @@ client = AsyncIOMotorClient(os.environ['MONGO_URI'])
 
 async def start_db() -> None:
     await init_beanie(
-        database=client.db_name,
+        database=client.derailed,
         document_models=[User, Settings, Guild, Member, Invite, Presence, Message, Channel],  # type: ignore
     )
 
@@ -144,6 +144,6 @@ class Channel(Document):
     parent_id: str | None
     guild_id: str | None
     type: int
-    delete_messages_job_id: str | None = Field()
+    delete_messages_job_id: str | None = Field(exclude=True)
     shun: bool = Field(False)
     members: list[User]
