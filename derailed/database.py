@@ -58,8 +58,8 @@ async def authorize_user(request: Request) -> User:
 
 
 class Settings(Document):
-    id: str
-    status: Literal['online', 'offline', 'dnd']
+    id: str = Field(exclude=True)
+    status: Literal['online', 'invisible', 'dnd']
     guild_order: list[int]
 
 
