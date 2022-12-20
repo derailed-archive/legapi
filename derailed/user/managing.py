@@ -173,7 +173,12 @@ async def modify_myself(request: Request, modifications: dict[str, Any]) -> resp
         user.password = modifications['password']
 
     await user.save()
-    return response.json(user.dict())
+
+    data = user.dict()
+
+    await request.app.ctx.dispatcher.dispatch('user', 'user_update', data, user.id)
+
+    return response.json(data)
 
 
 @user_managing.patch('/users/@me/settings')
@@ -205,7 +210,11 @@ async def edit_settings(request: Request, setting_changes: dict[str, Any]) -> re
         settings.guild_order = guild_order
 
     await settings.save()
-    return response.json(settings.dict())
+    data = settings.dict()
+
+    await request.app.ctx.dispatcher.dispatch('user', 'settings_update', data, settings.id)
+
+    return response.json(data)
 
 
 @user_managing.post('/users/@me/delete')
@@ -237,4 +246,9 @@ async def delete_myself(request: Request, delete_details: dict[str, str]) -> res
     user.deletor_job_id = deletor_id
     await user.save()
     await jobber.enqueue_job('delete_user', user_id=user.id, _job_id=deletor_id, _defer_by=7_776_000)
+
+    await request.app.ctx.dispatcher.dispatch(
+        'user', '_enqueued_deletion', {'id': user.id, 'type': 0, 'job_id': deletor_id}, user.id
+    )
+
     return response.json('', 204)
