@@ -1,7 +1,7 @@
-FROM python:3.10.4-alpine
+FROM python:3.11.1-buster
 
 # cchardet, and multiple other dependencies require GCC to build.
-RUN apk add --no-cache build-base libffi-dev
+# RUN apk add --no-cache build-base libffi-dev
 
 WORKDIR /
 COPY requirements.txt requirements.txt
@@ -12,4 +12,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD [ "python", "start.py" ]
+CMD [ "python", "server" ]

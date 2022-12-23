@@ -1,40 +1,33 @@
-import asyncio
+import marshmallow
+from gevent import monkey
+from webargs.flaskparser import parser
 
-from dotenv import load_dotenv
+if monkey.is_anything_patched() is False:
+    monkey.patch_all()
 
-load_dotenv()
+from flask import Flask, g, jsonify
 
-from msgspec import json
-from sanic import Request, Sanic
-from sanic import json as jsone
-from sanic_ext import Extend
+from .database import User as _
 
-from .constants import setup_jobber
-from .database import start_db
-from .dispatcher import Dispatcher
-from .rate_limit import RateLimiter
-from .storage import Exchange, Snowflake, Storage
-from .user.managing import user_managing
-
-app = Sanic('derailed', loads=json.decode, dumps=json.encode)
-app.blueprint(user_managing)
-app.config.FALLBACK_ERROR_FORMAT = 'json'
-app.config.KEEP_ALIVE_TIMEOUT = 15
-app.ctx.exchange = Exchange()
-app.ctx.dispatcher = Dispatcher()
-app.ctx.snowflake = Snowflake(1420070400000)
-storage = Storage(app=app)
-Extend.register(RateLimiter)
+app = Flask(__name__)
+parser.DEFAULT_VALIDATION_STATUS = 400
+parser.DEFAULT_LOCATION = 'json_or_form'
 
 
-@app.before_server_start
-async def setup(app: Sanic) -> None:
-    setup_jobber()
-    await start_db()
-    await app.ctx.dispatcher.start()
-    asyncio.create_task(storage.clear_cache())
+@app.errorhandler(422)
+@app.errorhandler(400)
+def handle_error(err: marshmallow.ValidationError):
+    headers = err.data.get('headers', None)
+    messages = err.data.get('messages', [])
+
+    if messages != []:
+        messages = messages['json_or_form']
+    if headers:
+        return jsonify({'_errors': messages}), err.code, headers
+    else:
+        return jsonify({'_errors': messages}), err.code
 
 
-@app.get('/', ctx_rate_limit='2/second')
-async def main(request: Request):
-    return jsone({'discourse': True})
+@app.after_request
+def after_request(*args, **kwargs) -> None:
+    g.pop('user', None)

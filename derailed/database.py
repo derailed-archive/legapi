@@ -1,112 +1,110 @@
-import binascii
-import logging
 import os
+from binascii import Error
 from datetime import datetime
-from typing import Literal
+from functools import wraps
+from typing import Callable, Literal, NotRequired, TypedDict
 
-from beanie import Document, init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, Field
-from sanic import Request, exceptions
+import pymongo
+from flask import abort, jsonify, request
 
-client = AsyncIOMotorClient(os.environ['MONGO_URI'])
+from .authorizer import auth as auth_medium
 
-
-async def start_db() -> None:
-    await init_beanie(
-        database=client.derailed,
-        document_models=[User, Settings, Guild, Member, Invite, Presence, Message, Channel],  # type: ignore
-    )
+_client = pymongo.MongoClient(os.environ['MONGODB_URI'])
+db = _client.get_database('derailed')
 
 
-class User(Document):
-    id: str
-    username: str = Field(min_length=1, max_length=30)
-    discriminator: str = Field(min_length=4, max_length=4)
-    email: str = Field(min_length=5)
-    password: str = Field(exclude=True)
+def authorize(func: Callable) -> Callable:
+    @wraps(func)
+    def wrapper(*args, **kwargs) -> Callable:
+        auth = request.headers.get('Authorization', None)
+
+        if auth is None:
+            abort(
+                jsonify(
+                    {'_errors': {'headers': {'authorization': ['Authorization is required']}}}, status=401
+                )
+            )
+
+        try:
+            user_id = auth_medium.get_value(auth)
+            int(user_id)
+        except (Error, ValueError):
+            abort(jsonify({'_errors': {'headers': {'authorization': ['Invalid Authorization']}}}), status=401)
+
+        user: User = db.users.find_one({'_id': user_id})
+
+        if not auth_medium.verify_signature(auth, user['password']):
+            abort(
+                jsonify(
+                    {'_errors': {'headers': {'authorization': ['Invalid Authorization Signature']}}},
+                    status=401,
+                )
+            )
+
+        return func(user, *args, **kwargs)
+
+    return wrapper
+
+
+class User(TypedDict):
+    _id: str
+    username: str
+    discriminator: str
+    email: str
+    password: str
     flags: int
     system: bool
-    deletor_job_id: str | None = Field(exclude=True)
+    deletor_job_id: NotRequired[str]
     suspended: bool
-    pronouns: str | None = Field(None, max_length=10, min_length=1)
 
 
-async def authorize_user(request: Request) -> User:
-    authorization = request.headers.get('Authorization')
-
-    if authorization is None or not isinstance(authorization, str):
-        raise exceptions.InvalidHeader('Authorization is missing or an invalid type', 400)
-
-    try:
-        user_id = request.app.ctx.exchange.get_value(authorization)
-    except binascii.Error as b:
-        logging.info(b)
-        raise exceptions.InvalidHeader('Authorization is invalid', 401)
-
-    user = await User.find_one(User.id == user_id)
-
-    if user is None:
-        raise exceptions.InvalidHeader('Authorization is invalid or user granted has been deleted', 401)
-
-    ok_signature = request.app.ctx.exchange.verify_signature(authorization, user.password)
-
-    if not ok_signature:
-        raise exceptions.InvalidHeader('Authorization forged or old', 401)
-
-    return user
+class Settings(TypedDict):
+    _id: str
+    status: str
+    guild_order: list[str]
 
 
-class Settings(Document):
-    id: str = Field(exclude=True)
-    status: Literal['online', 'invisible', 'dnd']
-    guild_order: list[int]
-
-
-class Guild(Document):
-    id: str
+class Guild(TypedDict):
+    _id: str
     name: str
-    description: str | None = Field(min_length=1, max_length=1000)
     flags: int
-    color: int
     owner_id: str
-    joinable: bool
-    unjoinable_reason: str | None
 
 
-class Member(Document):
+class Member(TypedDict):
+    _id: str
     user_id: str
     guild_id: str
     nick: str
 
 
-class Invite(Document):
-    code: str
+class Invite(TypedDict):
+    _id: str
     guild_id: str
     author_id: str
 
 
-class Activity(BaseModel):
+class BaseActivity(TypedDict):
     name: str
     type: int
     created_at: datetime
 
 
-class StatusableActivity(Activity):
+class StatusableActivity(BaseActivity):
     content: str
 
 
-class GameActivity(StatusableActivity):
+class GameActivity(BaseActivity):
     game_id: str
 
 
-class Stream(BaseModel):
-    platform: Literal['youtube', 'twitch']
+class Stream(TypedDict):
+    platform: int
     platform_user: str
     stream_id: str | None
 
 
-class StreamActivity(StatusableActivity):
+class StreamActivity(BaseActivity):
     stream: Stream
 
 
@@ -114,36 +112,29 @@ class CustomActivity(StatusableActivity):
     emoji_id: str
 
 
-class Presence(Document):
+class Presence(TypedDict):
     user_id: str
     guild_id: str
     device: Literal['mobile', 'desktop']
     activities: list[StatusableActivity | GameActivity | StreamActivity | CustomActivity]
-    status: Literal['online', 'offline', 'dnd']
+    status: Literal['online', 'invisible', 'dnd']
 
 
-class Message(Document):
-    id: str
+class Message(TypedDict):
+    _id: str
     author_id: str
     content: str
     channel_id: str
     timestamp: datetime
-    edited_timestamp: datetime | None = Field(None)
+    edited_timestamp: datetime
 
 
-# Types
-# User-to-User: 0
-# Group: 1
-# Support: 2
-# Text: 3
-# Category: 4
-class Channel(Document):
-    id: str
-    name: str | None
-    last_message_id: str
-    parent_id: str | None
-    guild_id: str | None
+class Channel(TypedDict):
+    _id: str
     type: int
-    delete_messages_job_id: str | None = Field(exclude=True)
-    shun: bool = Field(False)
-    members: list[User]
+    name: NotRequired[str | None]
+    last_message_id: NotRequired[str]
+    parent_id: NotRequired[str]
+    guild_id: NotRequired[str]
+    message_deletor_job_id: NotRequired[str]
+    members: NotRequired[list[User]]

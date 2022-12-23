@@ -1,4 +1,6 @@
+import uvicorn
+
 from derailed.app import app
 
 if __name__ == '__main__':
-    app.run(debug=True, dev=True)
+    app.run('0.0.0.0', 8000, True, True)

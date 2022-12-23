@@ -13,11 +13,19 @@ services:
     environment:
       - REDIS_URI=redis://redis:6379
       - MONGO_URI=mongodb://mongo:27017
+      - KAFKA_SERVERS=kafka:9092
 
   redis:
     image: eqalpha/keydb
+    restart: unless-stopped
 
   mongo:
     image: mongo
+    restart: unless-stopped
     volumes:
       - ./.data/db:/data/db
+    healthcheck:
+      test: test $$(echo "rs.initiate().ok || rs.status().ok" | mongo -u mongo -p mongo --quiet) -eq 1
+      interval: 10s
+      start_period: 30s
+    command: ["--replSet", "rs0", "--bind_ip_all"]
