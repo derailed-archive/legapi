@@ -7,7 +7,7 @@ from webargs import fields, flaskparser, validate
 from ..authorizer import auth
 from ..database import User, _client, db
 from ..identification import medium, version
-from ..powerbase import abort_auth, prepare_user
+from ..powerbase import abort_auth, prepare_user, limiter
 
 router = Blueprint('user', __name__, url_prefix='/v1')
 pswd_hasher = PasswordHasher()
@@ -37,6 +37,7 @@ def generate_discriminator() -> str:
         ),
     }
 )
+@limiter.limit('3/hour')
 def register_user(data: dict) -> User:
     q = len(list(db.users.find({'username': data['username'], 'discriminator': data['discriminator']})))
     if q >= 1:
@@ -79,6 +80,7 @@ def register_user(data: dict) -> User:
 
 
 @version('/users/@me', 1, router, 'GET')
+@limiter.limit('5/second')
 def get_me() -> None:
     if g.user is None:
         abort_auth()
