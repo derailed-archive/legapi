@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: dessant/lock-threads@v4
         with:
-          github-token: ${{ CASS_TOKEN }}
+          github-token: ${{ secrets.CASS_TOKEN }}
           issue-inactive-days: '182'
           add-issue-labels: 'S: Stale'
           issue-comment: 'Closing Issue due to Inactivity. If you still have issues pwease open up another issue~!'
