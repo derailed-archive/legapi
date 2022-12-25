@@ -5,15 +5,15 @@ services:
     depends_on:
       - redis
       - mongo
+      - mongosetup
     ports:
-      - "8000:8000"
+      - "8080:8080"
     build:
       context: .
       dockerfile: Dockerfile
     environment:
-      - REDIS_URI=redis://redis:6379
-      - MONGO_URI=mongodb://mongo:27017
-      - KAFKA_SERVERS=kafka:9092
+      - STORAGE_URI=redis://redis:6379
+      - MONGODB_URI=mongodb://mongo:27017/?replicaSet=rs0
 
   redis:
     image: eqalpha/keydb
@@ -24,8 +24,13 @@ services:
     restart: unless-stopped
     volumes:
       - ./.data/db:/data/db
-    healthcheck:
-      test: test $$(echo "rs.initiate().ok || rs.status().ok" | mongo -u mongo -p mongo --quiet) -eq 1
-      interval: 10s
-      start_period: 30s
     command: ["--replSet", "rs0", "--bind_ip_all"]
+
+  mongosetup:
+    image: mongo
+    depends_on:
+      - mongo
+    volumes:
+      - ./scripts/:/scripts/
+    restart: "no"
+    entrypoint: [ "bash", "/scripts/mongo_setup.sh"]

@@ -5,11 +5,13 @@ from webargs.flaskparser import parser
 if monkey.is_anything_patched() is False:
     monkey.patch_all()
 
-from flask import Flask, g, jsonify
+from flask import Flask, Response, g, jsonify
+from .powerbase import limiter
 
 from .database import User as _
 
 app = Flask(__name__)
+limiter.init_app(app)
 parser.DEFAULT_VALIDATION_STATUS = 400
 parser.DEFAULT_LOCATION = 'json_or_form'
 
@@ -27,7 +29,19 @@ def handle_error(err: marshmallow.ValidationError):
     else:
         return jsonify({'_errors': messages}), err.code
 
+@app.errorhandler(404)
+def handle_404(*args):
+    return jsonify({'message': '404: Not Found', 'code': 0})
+
+@app.errorhandler(405)
+def handle_405(*args):
+    return jsonify({'message': '405: Invalid Method', 'code': 0})
+
+@app.errorhandler(500)
+def handle_500(*args):
+    return jsonify({'message': '500: Internal Server Error', 'code': 0})
 
 @app.after_request
-def after_request(*args, **kwargs) -> None:
+def after_request(resp: Response) -> None:
     g.pop('user', None)
+    return resp

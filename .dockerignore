@@ -1,0 +1,5 @@
+.env
+testing/
+.ruff_cache/
+.vscode/
+__pycache__/

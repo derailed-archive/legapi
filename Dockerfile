@@ -1,4 +1,4 @@
-FROM python:3.11.1-buster
+FROM python:3.11.1-slim
 
 # cchardet, and multiple other dependencies require GCC to build.
 # RUN apk add --no-cache build-base libffi-dev
@@ -10,6 +10,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD [ "python", "server" ]
+CMD [ "gunicorn" ]

@@ -1,6 +1,18 @@
+# flask
 flask==2.2.2
+flask_limiter==2.8.1
 gevent==22.10.2
-python-dotenv==0.21.0
+limits[redis]==2.7.2
+
+# data
 pymongo==4.3.3
+
+# security
+python-dotenv==0.21.0
+argon2-cffi==21.3.0
+
+# server
 gunicorn==20.1.0
+
+# schema validation
 webargs==8.2.0

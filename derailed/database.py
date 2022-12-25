@@ -12,7 +12,6 @@ from .authorizer import auth as auth_medium
 _client = pymongo.MongoClient(os.environ['MONGODB_URI'])
 db = _client.get_database('derailed')
 
-
 def authorize(func: Callable) -> Callable:
     @wraps(func)
     def wrapper(*args, **kwargs) -> Callable:

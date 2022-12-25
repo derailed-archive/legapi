@@ -3,9 +3,6 @@ import multiprocessing
 from gevent import monkey
 
 wsgi_app = 'derailed.app:app'
-
-accesslog = '/.logs/log/accesslog'
-errorlog = '/.logs/errors/err'
 loglevel = 'debug'
 proxy_allow_ips = '*'
 bind = ['0.0.0.0:8080']

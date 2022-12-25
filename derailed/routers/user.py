@@ -4,11 +4,11 @@ from argon2 import PasswordHasher
 from flask import Blueprint, abort, g, jsonify
 from webargs import fields, flaskparser, validate
 
-from ...database import User, _client, db
-from ...identification import medium
-from ...powerbase import abort_auth, prepare_user
+from ..database import User, _client, db
+from ..identification import medium, version
+from ..powerbase import abort_auth, prepare_user
 
-router_v1 = Blueprint('user-v1', __name__, url_prefix='/v1')
+router = Blueprint('user', __name__, url_prefix='/v1')
 pswd_hasher = PasswordHasher()
 
 
@@ -17,7 +17,7 @@ def generate_discriminator() -> str:
     return '%04d' % discrim_number
 
 
-@router_v1.post('/register')
+@version('/register', 1, router, 'POST')
 @flaskparser.use_args(
     {
         'username': fields.String(required=True, allow_none=False, validate=validate.Length(1, 30)),
@@ -74,7 +74,7 @@ def register_user(data: dict) -> User:
     return jsonify(dict(user), status=201)
 
 
-@router_v1.get('/users/@me')
+@version('/users/@me', 1, router, 'GET')
 def get_me() -> None:
     if g.user is None:
         abort_auth()

@@ -3,7 +3,11 @@ import secrets
 import threading
 import time
 from random import randint
+from typing import Callable
 
+from flask import Blueprint
+
+versions = 1
 
 class IDMedium:
     def __init__(self, epoch: int = 1420070400000) -> None:
@@ -35,3 +39,20 @@ class IDMedium:
 
 
 medium = IDMedium()
+
+
+def version(path: str, minimum_version: int, bp: Blueprint, method: str, exclude_versions_higher: int = 0,**kwargs) -> Callable:
+    def wrapper(func: Callable) -> Callable:
+        for version in range(versions):
+            version += 1
+
+            if not version <= minimum_version:
+                continue
+            elif version > versions:
+                break
+            elif exclude_versions_higher > version:
+                break
+
+            bp.add_url_rule(f'/v{minimum_version}{path}', view_func=func, method=method, **kwargs)
+        return func
+    return wrapper
