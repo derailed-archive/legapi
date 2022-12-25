@@ -6,10 +6,12 @@ limits[redis]==2.7.2
 
 # data
 pymongo==4.3.3
+msgspec==0.10.1
 
 # security
 python-dotenv==0.21.0
 argon2-cffi==21.3.0
+pyjwt==2.6.0
 
 # server
 gunicorn==20.1.0

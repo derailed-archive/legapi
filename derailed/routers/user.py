@@ -4,6 +4,7 @@ from argon2 import PasswordHasher
 from flask import Blueprint, abort, g, jsonify
 from webargs import fields, flaskparser, validate
 
+from ..authorizer import auth
 from ..database import User, _client, db
 from ..identification import medium, version
 from ..powerbase import abort_auth, prepare_user
@@ -71,7 +72,10 @@ def register_user(data: dict) -> User:
         db.settings.insert_one({'_id': user_id, 'status': 'online', 'guild_order': []}, session=s)
         s.commit_transaction()
 
-    return jsonify(dict(user), status=201)
+    usr = dict(user)
+    usr['token'] = auth.form(user_id, password)
+
+    return jsonify(usr, status=201)
 
 
 @version('/users/@me', 1, router, 'GET')

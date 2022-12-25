@@ -1,48 +1,11 @@
 import os
-from binascii import Error
 from datetime import datetime
-from functools import wraps
-from typing import Callable, Literal, NotRequired, TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 import pymongo
-from flask import abort, jsonify, request
-
-from .authorizer import auth as auth_medium
 
 _client = pymongo.MongoClient(os.environ['MONGODB_URI'])
 db = _client.get_database('derailed')
-
-def authorize(func: Callable) -> Callable:
-    @wraps(func)
-    def wrapper(*args, **kwargs) -> Callable:
-        auth = request.headers.get('Authorization', None)
-
-        if auth is None:
-            abort(
-                jsonify(
-                    {'_errors': {'headers': {'authorization': ['Authorization is required']}}}, status=401
-                )
-            )
-
-        try:
-            user_id = auth_medium.get_value(auth)
-            int(user_id)
-        except (Error, ValueError):
-            abort(jsonify({'_errors': {'headers': {'authorization': ['Invalid Authorization']}}}), status=401)
-
-        user: User = db.users.find_one({'_id': user_id})
-
-        if not auth_medium.verify_signature(auth, user['password']):
-            abort(
-                jsonify(
-                    {'_errors': {'headers': {'authorization': ['Invalid Authorization Signature']}}},
-                    status=401,
-                )
-            )
-
-        return func(user, *args, **kwargs)
-
-    return wrapper
 
 
 class User(TypedDict):

@@ -1,5 +1,4 @@
 import os
-from binascii import Error
 from typing import Any, NoReturn
 
 import flask_limiter.util
@@ -7,45 +6,16 @@ from flask import abort, g, jsonify, request
 from flask_limiter import HEADERS, Limiter
 
 from .authorizer import auth as auth_medium
-from .database import User, db
+from .database import User
 
 
-def authorize_user(required: bool = True) -> User | None:
+def authorize_user() -> User | None:
     auth = request.headers.get('Authorization', None)
 
     if auth is None:
-        if required:
-            abort(
-                jsonify(
-                    {'_errors': {'headers': {'authorization': ['Authorization is required']}}}, status=401
-                )
-            )
-        else:
-            return None
+        return None
 
-    try:
-        user_id = auth_medium.get_value(auth)
-        int(user_id)
-    except (Error, ValueError):
-        if required:
-            abort(jsonify({'_errors': {'headers': {'authorization': ['Invalid Authorization']}}}), status=401)
-        else:
-            return None
-
-    user: User = db.users.find_one({'_id': user_id})
-
-    if not auth_medium.verify_signature(auth, user['password']):
-        if required:
-            abort(
-                jsonify(
-                    {'_errors': {'headers': {'authorization': ['Invalid Authorization Signature']}}},
-                    status=401,
-                )
-            )
-        else:
-            return None
-
-    return User
+    return dict(auth_medium.verify(auth))
 
 
 def get_key_value() -> str:
