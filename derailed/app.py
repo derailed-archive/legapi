@@ -1,3 +1,4 @@
+import dotenv
 from gevent import monkey
 
 if monkey.is_anything_patched() is False:
@@ -7,6 +8,8 @@ import marshmallow
 from flask import Flask, Response, g, jsonify
 from msgspec import json
 from webargs.flaskparser import parser
+
+dotenv.load_dotenv()
 
 from .database import User as _
 from .powerbase import limiter

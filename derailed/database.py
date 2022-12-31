@@ -37,7 +37,7 @@ class Member(TypedDict):
     _id: str
     user_id: str
     guild_id: str
-    nick: str
+    nick: str | None
 
 
 class Invite(TypedDict):
