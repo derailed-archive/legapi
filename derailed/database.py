@@ -26,18 +26,32 @@ class Settings(TypedDict):
     guild_order: list[str]
 
 
+class Permissions(TypedDict):
+    allow: str
+    deny: str
+
+
+class Role(TypedDict):
+    _id: str
+    guild_id: str
+    name: str
+    permissions: Permissions
+    position: int
+
+
 class Guild(TypedDict):
     _id: str
     name: str
     flags: int
     owner_id: str
+    permissions: Permissions
 
 
 class Member(TypedDict):
-    _id: str
     user_id: str
     guild_id: str
     nick: str | None
+    role_ids: list[str]
 
 
 class Invite(TypedDict):

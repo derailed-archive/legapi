@@ -10,7 +10,7 @@ from ..database import User, _client, db
 from ..identification import medium, version
 from ..powerbase import abort_auth, limiter, prepare_user, publish_to_user
 
-router = Blueprint('user', __name__, url_prefix='/v1')
+router = Blueprint('user', __name__)
 pswd_hasher = PasswordHasher()
 
 
@@ -40,14 +40,10 @@ def generate_discriminator() -> str:
 )
 @limiter.limit('3/hour')
 def register_user(data: dict) -> User:
-    q = len(list(db.users.find({'username': data['username'], 'discriminator': data['discriminator']})))
-    if q >= 1:
-        abort(jsonify({'_errors': {'username': ['Username already taken']}}, 400))
-
     discrim: str | None = None
     for _ in range(9):
         d = generate_discriminator()
-        q = len(list(db.users.find({'username': data['username'], 'discriminator': data['discriminator']})))
+        q = len(list(db.users.find({'username': data['username'], 'discriminator': d})))
         if q >= 1:
             continue
         discrim = d
@@ -59,25 +55,20 @@ def register_user(data: dict) -> User:
     user_id = medium.snowflake()
     password = pswd_hasher.hash(data['password'])
 
-    with _client.start_session() as s:
-        s.start_transaction()
-        user = db.users.insert_one(
-            {
-                '_id': user_id,
-                'username': data['username'],
-                'discriminator': discrim,
-                'email': data['email'],
-                'password': password,
-            },
-            session=s,
-        )
-        db.settings.insert_one({'_id': user_id, 'status': 'online', 'guild_order': []}, session=s)
-        s.commit_transaction()
+    usr = {
+        '_id': user_id,
+        'username': data['username'],
+        'discriminator': discrim,
+        'email': data['email'],
+        'password': password,
+    }
 
-    usr = dict(user)
+    db.users.insert_one(usr)
+    db.settings.insert_one({'_id': user_id, 'status': 'online', 'guild_order': []})
+
     usr['token'] = auth.form(user_id, password)
 
-    return jsonify(usr, status=201)
+    return jsonify(usr), 201
 
 
 @version('/users/@me', 1, router, 'PATCH')
@@ -118,15 +109,15 @@ def patch_me(data: dict) -> None:
     old_password = data.get('old_password')
 
     if password is None and old_password:
-        abort(jsonify({'_errors': {'password': ['Missing field']}}))
+        abort(jsonify({'_errors': {'password': ['Missing field']}}), status=400)
 
     if password and not old_password:
-        abort(jsonify({'_errors': {'old_password': ['Missing field']}}))
+        abort(jsonify({'_errors': {'old_password': ['Missing field']}}), status=400)
 
     try:
         pswd_hasher.verify(g.user['password'], old_password)
     except argon2.exceptions.Argon2Error:
-        abort(jsonify({'_errors': {'old_password': ['Invalid']}}))
+        abort(jsonify({'_errors': {'old_password': ['Invalid']}}), status=400)
 
     user = g.user
     user['password'] = password

@@ -56,7 +56,7 @@ def version(
             elif exclude_versions_higher > version:
                 break
 
-            bp.add_url_rule(f'/v{minimum_version}{path}', view_func=func, method=method, **kwargs)
+            bp.add_url_rule(f'/v{minimum_version}{path}', view_func=func, methods=[method], **kwargs)
         return func
 
     return wrapper
