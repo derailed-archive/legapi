@@ -1,12 +1,15 @@
+import json
 import os
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypedDict
 
 import flask_limiter.util
+import grpc
 from flask import abort, g, jsonify, request
 from flask_limiter import HEADERS, Limiter
 
 from .authorizer import auth as auth_medium
 from .database import User
+from .grpc import derailed_pb2_grpc
 
 
 def authorize_user() -> User | None:
@@ -51,4 +54,29 @@ def prepare_user(user: User, own: bool = False) -> dict[str, Any]:
 
 
 def abort_auth() -> NoReturn:
-    abort(jsonify({'_errors': {'headers': {'authorization': ['missing']}}}), status=401)
+    abort(jsonify({'_errors': {'headers': {'authorization': ['invalid or missing']}}}), status=401)
+
+
+user_channel = grpc.insecure_channel(os.getenv('USER_CHANNEL'))
+user_stub = derailed_pb2_grpc.UserStub(user_channel)
+guild_channel = grpc.insecure_channel(os.getenv('GUILD_CHANNEL'))
+guild_stub = derailed_pb2_grpc.GuildStub(guild_channel)
+
+
+def publish_to_user(user_id: str, event: str, data: dict[str, Any]) -> None:
+    msg = {'user_id': user_id, 'message': {'event': event, 'data': json.loads(data)}}
+    user_stub.publish(msg)
+
+
+def publish_to_guild(guild_id: str, event: str, data: dict[str, Any]) -> None:
+    msg = {'guild_id': guild_id, 'message': {'event': event, 'data': json.loads(data)}}
+    guild_stub.publish(msg)
+
+
+class GuildInformation(TypedDict):
+    presences: int
+    available: bool
+
+
+def get_guild_info(guild_id: str) -> GuildInformation:
+    return guild_stub.get_guild_info({'guild_id': guild_id})
