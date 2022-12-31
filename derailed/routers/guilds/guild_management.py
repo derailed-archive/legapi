@@ -19,7 +19,7 @@ def create_guild(data: dict) -> None:
     guild = {'_id': medium.snowflake(), 'name': data['name'], 'owner_id': g.user['_id'], 'flags': 0, 'permissions': {'allow': DEFAULT_PERMISSIONS}}
 
     db.guilds.insert_one(guild)
-    db.members.insert_one({'user_id': g.user['_id'], 'guild_id': guild['_id'], 'nick': None, 'role_ids': guild['_id']})
+    db.members.insert_one({'user_id': g.user['_id'], 'guild_id': guild['_id'], 'nick': None, 'role_ids': []})
 
     return jsonify(dict(guild)), 201
 
@@ -27,7 +27,7 @@ def create_guild(data: dict) -> None:
 @flaskparser.use_args({
     'name': fields.String(required=False, allow_none=False, validate=validate.Length(1, 30))
 })
-def modify_guild(guild_id: int, data: dict) -> None:
+def modify_guild(data: dict, guild_id: int) -> None:
     guild, member = prepare_membership(guild_id)
 
     if data == {}:

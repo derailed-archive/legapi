@@ -1,3 +1,4 @@
+from time import time
 from typing import NoReturn
 
 import jwt
@@ -9,7 +10,7 @@ from .database import User, db
 class AuthMedium:
     def form(self, user_id: str, password: str) -> str:
         return jwt.encode(
-            {'type': 0, 'bot_token': False},
+            {'type': 0, 'bot_token': False, 'time': time()},
             password,
             headers={'user_id': user_id},
         )

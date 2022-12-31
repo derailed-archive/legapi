@@ -66,11 +66,11 @@ guild_stub = derailed_pb2_grpc.GuildStub(guild_channel)
 
 
 def publish_to_user(user_id: str, event: str, data: dict[str, Any]) -> None:
-    user_stub.publish(UPubl(user_id=user_id, message=Message(event=event, data=json.dumps(data))))
+    user_stub.publish.future(UPubl(user_id=user_id, message=Message(event=event, data=json.dumps(data))))
 
 
 def publish_to_guild(guild_id: str, event: str, data: dict[str, Any]) -> None:
-    guild_stub.publish(Publ(guild_id=guild_id, message=Message(event=event, data=json.dumps(data))))
+    guild_stub.publish.future(Publ(guild_id=guild_id, message=Message(event=event, data=json.dumps(data))))
 
 
 def get_guild_info(guild_id: str) -> RepliedGuildInfo:
