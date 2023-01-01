@@ -11,7 +11,7 @@ versions = 1
 
 
 class IDMedium:
-    def __init__(self, epoch: int = 1420070400000) -> None:
+    def __init__(self, epoch: int = 1672531200000) -> None:
         self._incr: int = 0
         self._epoch = epoch
 
