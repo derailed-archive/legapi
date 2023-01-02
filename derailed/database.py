@@ -70,29 +70,10 @@ class StatusableActivity(BaseActivity):
     content: str
 
 
-class GameActivity(BaseActivity):
-    game_id: str
-
-
-class Stream(TypedDict):
-    platform: int
-    platform_user: str
-    stream_id: str | None
-
-
-class StreamActivity(BaseActivity):
-    stream: Stream
-
-
-class CustomActivity(StatusableActivity):
-    emoji_id: str
-
-
 class Presence(TypedDict):
-    user_id: str
-    guild_id: str
-    device: Literal['mobile', 'desktop']
-    activities: list[StatusableActivity | GameActivity | StreamActivity | CustomActivity]
+    _id: str
+    device: Literal['mobile', 'desktop', 'web']
+    activities: list[StatusableActivity]
     status: Literal['online', 'invisible', 'dnd']
 
 
@@ -112,5 +93,6 @@ class Channel(TypedDict):
     last_message_id: NotRequired[str]
     parent_id: NotRequired[str]
     guild_id: NotRequired[str]
+    position: NotRequired[int]
     message_deletor_job_id: NotRequired[str]
     members: NotRequired[list[User]]

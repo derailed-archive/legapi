@@ -1,8 +1,10 @@
 from enum import IntFlag
 from types import SimpleNamespace
 
+
 def has_bit(value: int, visible: int) -> bool:
     return bool(value & visible)
+
 
 class GuildPermissions(IntFlag):
     MODIFY_GUILD = 1 << 0
@@ -20,12 +22,15 @@ class GuildPermissions(IntFlag):
     MODIFY_INVITES = 1 << 12
     ADMINISTRATOR = 1 << 13
     MODIFY_MEMBERS_NICKNAMES = 1 << 14
+    VIEW_CHANNEL = 1 << 15
+
 
 ALL_PERMISSIONS = 0
 DEFAULT_PERMISSIONS = 3328
 
 for _v in GuildPermissions:
     ALL_PERMISSIONS += _v.value
+
 
 class GuildPermission(SimpleNamespace):
     allow: GuildPermissions

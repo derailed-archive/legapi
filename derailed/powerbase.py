@@ -1,19 +1,23 @@
 import json
 import os
-from typing import Any, NoReturn, TypedDict
+import re
+from typing import Any, NoReturn
 
 import flask_limiter.util
 import grpc
-from flask import abort, g, jsonify, request
+from flask import Response, abort, g, jsonify, request
 from flask_limiter import HEADERS, Limiter
 
-from .grpc.derailed_pb2 import GetGuildInfo, Message, Publ, RepliedGuildInfo, UPubl
-
-from .permissions import GuildPermission, has_bit, merge_permissions, unwrap_guild_permissions
-
 from .authorizer import auth as auth_medium
-from .database import Guild, Member, Role, User, db
+from .database import Channel, Guild, Member, Role, User, db
 from .grpc import derailed_pb2_grpc
+from .grpc.derailed_pb2 import GetGuildInfo, Message, Publ, RepliedGuildInfo, UPubl
+from .permissions import (
+    GuildPermission,
+    has_bit,
+    merge_permissions,
+    unwrap_guild_permissions,
+)
 
 
 def authorize_user() -> User | None:
@@ -117,10 +121,72 @@ def prepare_permissions(member: Member, guild: Guild, required_permissions: list
     for role_id in roles:
         role: Role = db.roles.find_one({'_id': role_id})
 
-        permsl.append(unwrap_guild_permissions(allow=role['permissions']['allows'], deny=role['permissions']['deny'], pos=role['position']))
+        permsl.append(
+            unwrap_guild_permissions(
+                allow=role['permissions']['allows'], deny=role['permissions']['deny'], pos=role['position']
+            )
+        )
 
     perms = merge_permissions(*permsl)
 
     for perm in required_permissions:
         if not has_bit(perms, perm):
             abort(jsonify({'_errors': ['Invalid Permissions']}), status=403)
+
+
+CHANNEL_REGEX = re.compile(r'^[a-z0-9](?:[a-z0-9-_]{0,30}[a-z0-9])?$')
+
+
+def prepare_channel_position(wanted_position: int, parent_id: int, guild: Guild) -> None:
+    guild_id = guild['_id']
+
+    c = db.channels.find_one({'guild_id': guild_id, 'position': wanted_position})
+
+    if c is None:
+        return
+
+    guild_channels = db.channels.find({'guild_id': guild_id})
+
+    for channel in guild_channels:
+        if channel['type'] == 0:
+            continue
+
+        if channel['position'] >= wanted_position:
+            channel['position'] += 1
+
+        db.channels.update_one({'_id': channel['_id'], 'parent_id': parent_id}, channel)
+
+
+def prepare_category_position(wanted_position: int, guild: Guild) -> None:
+    guild_id = guild['_id']
+
+    c = db.channels.find_one({'guild_id': guild_id, 'position': wanted_position})
+
+    if c is None:
+        return
+
+    guild_channels = db.channels.find({'guild_id': guild_id})
+
+    for channel in guild_channels:
+        if channel['type'] != 0:
+            continue
+
+        if channel['position'] >= wanted_position:
+            channel['position'] += 1
+
+        db.channels.update_one({'_id': channel['_id']}, channel)
+
+
+def prepare_guild_channel(channel_id: int, guild: Guild) -> Channel:
+    channel_id = str(channel_id)
+
+    channel = db.channels.find_one({'_id': channel_id, 'guild_id': guild['_id']})
+
+    if channel is None:
+        abort(jsonify({'_errors': ['Channel not found']}), status=404)
+
+    return channel
+
+
+def plain_resp() -> Response:
+    return Response('', 204)

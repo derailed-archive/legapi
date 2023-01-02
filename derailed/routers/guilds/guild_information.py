@@ -1,8 +1,10 @@
 from flask import Blueprint, jsonify
-from ...powerbase import get_guild_info, prepare_guild, prepare_membership
+
 from ...identification import version
+from ...powerbase import get_guild_info, prepare_guild, prepare_membership
 
 router = Blueprint('guild_information', __name__)
+
 
 @version('/guilds/<int:guild_id>/preview', 1, router, 'GET')
 def get_guild_preview(guild_id: int) -> None:
@@ -15,6 +17,7 @@ def get_guild_preview(guild_id: int) -> None:
     gid['available'] = guild_info.available
 
     return jsonify(gid)
+
 
 @version('/guilds/<int:guild_id>', 1, router, 'GET')
 def get_guild(guild_id: int) -> None:
