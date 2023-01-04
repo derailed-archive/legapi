@@ -1,17 +1,15 @@
 from random import randint
 
-import argon2
-from argon2 import PasswordHasher
+import bcrypt
 from flask import Blueprint, abort, g, jsonify
 from webargs import fields, flaskparser, validate
 
 from ..authorizer import auth
-from ..database import User, _client, db
+from ..database import User, db
 from ..identification import medium, version
 from ..powerbase import abort_auth, limiter, prepare_user, publish_to_user
 
 router = Blueprint('user', __name__)
-pswd_hasher = PasswordHasher()
 
 
 def generate_discriminator() -> str:
@@ -53,7 +51,7 @@ def register_user(data: dict) -> User:
         abort(jsonify({'_errors': {'username': ['Discriminator not available']}}, 400))
 
     user_id = medium.snowflake()
-    password = pswd_hasher.hash(data['password'])
+    password = bcrypt.hashpw(data['password'].encode(), bcrypt.gensalt(14)).decode()
 
     usr = {
         '_id': user_id,
@@ -114,10 +112,10 @@ def patch_me(data: dict) -> None:
     if password and not old_password:
         abort(jsonify({'_errors': {'old_password': ['Missing field']}}), status=400)
 
-    try:
-        pswd_hasher.verify(g.user['password'], old_password)
-    except argon2.exceptions.Argon2Error:
-        abort(jsonify({'_errors': {'old_password': ['Invalid']}}), status=400)
+    is_pw = bcrypt.checkpw(old_password.encode(), g.user['password'].encode())
+
+    if not is_pw:
+        abort(jsonify({'_errors': 'Invalid Password'}), status=400)
 
     user = g.user
     user['password'] = password
@@ -195,11 +193,11 @@ def login(data: dict) -> None:
     if user is None:
         abort_auth()
 
-    try:
-        pswd_hasher.verify(user['password'], data['password'])
-    except argon2.exceptions.Argon2Error:
+    true_pw = bcrypt.checkpw(user['password'].encode(), data['password'].encode())
+
+    if not true_pw:
         abort_auth()
 
     usr = dict(user)
     usr['token'] = auth.form(user['_id'], user['password'])
-    return usr
+    return prepare_user(usr, True)

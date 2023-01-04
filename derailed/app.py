@@ -10,12 +10,14 @@ from webargs.flaskparser import parser
 
 dotenv.load_dotenv()
 
-from .database import User as _
+from .json import Decoder, Encoder
 from .powerbase import authorize_user, limiter
 from .routers import user
 from .routers.guilds import guild_information, guild_management
 
 app = Flask(__name__)
+app.json_encoder = Encoder
+app.json_decoder = Decoder
 limiter.init_app(app)
 parser.DEFAULT_VALIDATION_STATUS = 400
 parser.DEFAULT_LOCATION = 'json_or_form'
@@ -63,4 +65,5 @@ def before_request(*args, **kwargs) -> None:
 @app.after_request
 def after_request(resp: Response) -> None:
     g.pop('user', None)
+    resp.headers.add('Via', '1.1 cf + py')
     return resp

@@ -1,47 +1,51 @@
-from time import time
+import base64
+import binascii
 from typing import NoReturn
 
-import jwt
+import itsdangerous
+import msgspec
+import urllib3
 from flask import abort, jsonify
 
 from .database import User, db
 
+_pool = urllib3.HTTPConnectionPool('localhost:4600', headers={'Content-Type': 'application/json'})
+
 
 class AuthMedium:
     def form(self, user_id: str, password: str) -> str:
-        return jwt.encode(
-            {'type': 0, 'bot_token': False, 'time': time()},
-            password,
-            headers={'user_id': user_id},
-        )
+        user_id = base64.urlsafe_b64encode(user_id.encode())
+
+        signer = itsdangerous.TimestampSigner(password)
+        return signer.sign(user_id).decode()
 
     def _abort(self) -> NoReturn:
         abort(jsonify({'_errors': ['Invalid Authentication']}), status=401)
 
-    def verify(self, token: str) -> User:
-        headers = jwt.get_unverified_header(token)
+    def verify(self, token: str) -> User | None:
+        splits = token.split('.')
 
         try:
-            user_id = int(headers['user_id'])
-        except (KeyError, ValueError):
-            self._abort()
+            user_id = splits[0]
+            user_id = base64.urlsafe_b64decode(user_id).decode()
+        except (binascii.Error, UnicodeDecodeError, IndexError):
+            return
 
-        user_id = str(user_id)
+        user = db.users.find_one({'_id': user_id})
 
-        doc = db.users.find_one({'_id': user_id})
+        if user is None:
+            return
 
-        if doc is None:
-            self._abort()
+        json = msgspec.json.encode({'token': token, 'user_id': user['_id'], 'password': user['password']})
 
-        password = doc['password']
+        req: urllib3.response.HTTPResponse = _pool.request('POST', '/validate', body=json)
 
-        try:
-            jwt.decode(token, password, algorithms=['HS256'])
-        except jwt.DecodeError:
-            print('r')
-            self._abort()
+        resp = msgspec.json.decode(req.data, type=dict)
 
-        return doc
+        if resp['is_valid'] == True:
+            return user
+        else:
+            return
 
 
 auth = AuthMedium()

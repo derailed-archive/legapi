@@ -12,6 +12,7 @@ from .authorizer import auth as auth_medium
 from .database import Channel, Guild, Member, Role, User, db
 from .grpc import derailed_pb2_grpc
 from .grpc.derailed_pb2 import GetGuildInfo, Message, Publ, RepliedGuildInfo, UPubl
+from .identification import medium
 from .permissions import (
     GuildPermission,
     has_bit,
@@ -23,10 +24,15 @@ from .permissions import (
 def authorize_user() -> User | None:
     auth = request.headers.get('Authorization', None)
 
-    if auth is None:
+    if auth is None or auth == '':
         return None
 
-    return dict(auth_medium.verify(auth))
+    v = auth_medium.verify(auth)
+
+    if v is None:
+        return None
+
+    return dict(v)
 
 
 def get_key_value() -> str:
@@ -145,12 +151,9 @@ def prepare_channel_position(wanted_position: int, parent_id: int, guild: Guild)
     if c is None:
         return
 
-    guild_channels = db.channels.find({'guild_id': guild_id})
+    guild_channels = db.channels.find({'guild_id': guild_id, 'parent_id': parent_id})
 
     for channel in guild_channels:
-        if channel['type'] == 0:
-            continue
-
         if channel['position'] >= wanted_position:
             channel['position'] += 1
 
@@ -190,3 +193,27 @@ def prepare_guild_channel(channel_id: int, guild: Guild) -> Channel:
 
 def plain_resp() -> Response:
     return Response('', 204)
+
+
+def prepare_default_channels(guild: Guild) -> None:
+    cat = {
+        '_id': medium.snowflake(),
+        'name': 'general',
+        'parent_id': None,
+        'type': 0,
+        'last_message_id': None,
+        'guild_id': guild['_id'],
+        'position': 1,
+    }
+    general = {
+        '_id': medium.snowflake(),
+        'name': 'general',
+        'parent_id': cat['_id'],
+        'type': 1,
+        'last_message_id': None,
+        'guild_id': guild['_id'],
+        'position': 1,
+    }
+
+    db.channels.insert_one(cat)
+    db.channels.insert_one(general)
