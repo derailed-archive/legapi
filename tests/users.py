@@ -5,12 +5,7 @@ import pytest
 class UserRouter:
     def test_register(client):
         resp = client.post(
-            '/v1/register',
-            json={
-                'username': 'test',
-                'email': 'test@test.com',
-                'password': 'ABcdef148'
-            }
+            '/v1/register', json={'username': 'test', 'email': 'test@test.com', 'password': 'ABcdef148'}
         )
         assert resp.status == 201
         assert resp.json['username'] == 'test'
@@ -25,12 +20,7 @@ class UserRouter:
         pytest.user_token = resp.json['token']
 
     def test_get_me(client):
-        resp = client.get(
-            '/v1/users/@me',
-            headers={
-                'Authorization': pytest.user_token
-            }
-        )
+        resp = client.get('/v1/users/@me', headers={'Authorization': pytest.user_token})
         assert resp.status == 200
         assert resp.json['username'] == 'test'
         assert resp.json['email'] == 'test'
