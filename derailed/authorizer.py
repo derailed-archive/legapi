@@ -5,9 +5,10 @@ from typing import NoReturn
 import itsdangerous
 import msgspec
 import urllib3
-from flask import abort, jsonify
+from flask import abort
 
 from .database import User, db
+from .json import proper
 
 _pool = urllib3.HTTPConnectionPool('localhost:4600', headers={'Content-Type': 'application/json'})
 
@@ -20,7 +21,7 @@ class AuthMedium:
         return signer.sign(user_id).decode()
 
     def _abort(self) -> NoReturn:
-        abort(jsonify({'_errors': ['Invalid Authentication']}), status=401)
+        abort(proper({'_errors': ['Invalid Authentication']}, status=401))
 
     def verify(self, token: str) -> User | None:
         splits = token.split('.')

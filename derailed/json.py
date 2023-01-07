@@ -1,4 +1,7 @@
+from typing import Any
+
 import msgspec
+from flask import Response
 
 
 class Decoder:
@@ -18,3 +21,7 @@ class Encoder:
     def encode(self, obj):
         # decode back to str, as orjson returns bytes
         return msgspec.json.encode(obj).decode('utf-8')
+
+
+def proper(data: dict[str, Any], status: int = 200) -> Response:
+    return Response(msgspec.json.encode(data), status, content_type='application/json')

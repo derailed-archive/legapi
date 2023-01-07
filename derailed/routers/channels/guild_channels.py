@@ -1,8 +1,9 @@
-from flask import Blueprint, abort, jsonify
+from flask import Blueprint, abort
 from webargs import fields, flaskparser, validate
 
 from ...database import db
 from ...identification import medium, version
+from ...json import proper
 from ...permissions import GuildPermissions
 from ...powerbase import (
     CHANNEL_REGEX,
@@ -16,6 +17,17 @@ from ...powerbase import (
 )
 
 router = Blueprint('guild_channels', __name__)
+
+
+@version('/guilds/<int:guild_id>/channels/<int:channel_id>', 1, router, 'GET')
+def get_channel(guild_id: int, channel_id: int) -> None:
+    guild, member = prepare_membership(guild_id)
+
+    channel = prepare_guild_channel(channel_id, guild)
+
+    prepare_permissions(member, guild, [GuildPermissions.VIEW_CHANNEL.value])
+
+    return channel
 
 
 @version('/guilds/<int:guild_id>/channels', 1, router, 'POST')
@@ -42,15 +54,15 @@ def create_channel(data: dict, guild_id: int) -> None:
         parent = db.channels.find_one({'guild_id': str(guild_id), '_id': str(parent_id)})
 
         if parent is None:
-            abort(jsonify({'_errors': {'parent_id': ['Invalid channel']}}))
+            abort(proper({'_errors': {'parent_id': ['Invalid channel']}}, 400))
 
         if (parent['type'] != 0) or (data['type'] == 0):
-            abort(jsonify({'_errors': {'parent_id': ['Invalid type']}}))
+            abort(proper({'_errors': {'parent_id': ['Invalid type']}}, 400))
 
     channel_count = db.channels.count_documents({'guild_id': str(guild_id)})
 
     if channel_count == 100:
-        abort(jsonify({'_errors': 'Channel limit reached'}))
+        abort(proper({'_errors': 'Channel limit reached'}, 400))
 
     if data['type'] == 0:
         highest_channel = (
@@ -61,7 +73,7 @@ def create_channel(data: dict, guild_id: int) -> None:
 
     for c in highest_channel:
         if ((c['position'] + 1) < data['position']) and position is not None:
-            abort(jsonify({'_errors': {'position': ['Invalid position']}}))
+            abort(proper({'_errors': {'position': ['Invalid position']}}, 400))
         elif position is None:
             position = c['position'] + 1
 
@@ -83,7 +95,7 @@ def create_channel(data: dict, guild_id: int) -> None:
 
     publish_to_guild(str(guild_id), 'CHANNEL_CREATE', channel)
 
-    return jsonify(channel), 201
+    return channel, 201
 
 
 @version('/guilds/<int:guild_id>/channels/<int:channel_id>', 1, router, 'PATCH')
@@ -126,7 +138,7 @@ def modify_channel(data: dict, guild_id: int, channel_id: int) -> None:
         parent = db.channels.find_one({'guild_id': str(guild_id), '_id': str(parent_id)})
 
         if parent is None or (parent['type'] != 0) or (data['type'] == 0):
-            abort(jsonify({'_errors': {'parent_id': ['Invalid type']}}))
+            abort(proper({'_errors': {'parent_id': ['Invalid type']}}, 400))
 
         prepare_channel_position(highest_channel['position'] + 1, parent_id, guild)
         channel_copy['parent_id'] = parent_id
@@ -134,7 +146,7 @@ def modify_channel(data: dict, guild_id: int, channel_id: int) -> None:
     if position:
         for c in highest_channel:
             if ((c['position'] + 1) < data['position']) and position is not None:
-                abort(jsonify({'_errors': {'position': ['Invalid position']}}))
+                abort(proper({'_errors': {'position': ['Invalid position']}}, 400))
             elif position is None:
                 position = c['position'] + 1
 
@@ -148,7 +160,7 @@ def modify_channel(data: dict, guild_id: int, channel_id: int) -> None:
 
     publish_to_guild(guild['_id'], 'CHANNEL_UPDATE', channel_copy)
 
-    return jsonify(channel_copy)
+    return channel_copy
 
 
 @version('/guilds/<int:guild_id>/channels/<int:channel_id>')

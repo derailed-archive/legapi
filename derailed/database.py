@@ -84,7 +84,7 @@ class Message(TypedDict):
     content: str
     channel_id: str
     timestamp: datetime
-    edited_timestamp: datetime
+    edited_timestamp: datetime | None
 
 
 class Channel(TypedDict):

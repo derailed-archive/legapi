@@ -5,7 +5,7 @@ if monkey.is_anything_patched() is False:
     monkey.patch_all()
 
 import marshmallow
-from flask import Flask, Response, g, jsonify
+from flask import Flask, Response, g
 from webargs.flaskparser import parser
 
 dotenv.load_dotenv()
@@ -37,24 +37,24 @@ def handle_error(err: marshmallow.ValidationError):
     if messages != []:
         messages = messages['json_or_form']
     if headers:
-        return jsonify({'_errors': messages}), err.code, headers
+        return {'_errors': messages}, err.code, headers
     else:
-        return jsonify({'_errors': messages}), err.code
+        return {'_errors': messages}, err.code
 
 
 @app.errorhandler(404)
 def handle_404(*args):
-    return jsonify({'message': '404: Not Found', 'code': 0}), 404
+    return {'message': '404: Not Found', 'code': 0}, 404
 
 
 @app.errorhandler(405)
 def handle_405(*args):
-    return jsonify({'message': '405: Invalid Method', 'code': 0}), 405
+    return {'message': '405: Invalid Method', 'code': 0}, 405
 
 
 @app.errorhandler(500)
 def handle_500(*args):
-    return jsonify({'message': '500: Internal Server Error', 'code': 0}), 500
+    return {'message': '500: Internal Server Error', 'code': 0}, 500
 
 
 @app.before_request

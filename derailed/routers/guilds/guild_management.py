@@ -40,7 +40,7 @@ def create_guild(data: dict) -> None:
 
     publish_to_user(user_id=g.user['_id'], event='GUILD_CREATE', data=guild)
 
-    return jsonify(dict(guild)), 201
+    return dict(guild), 201
 
 
 @version('/guilds/<int:guild_id>', 1, router, 'PATCH')
@@ -51,7 +51,7 @@ def modify_guild(data: dict, guild_id: int) -> None:
     guild, member = prepare_membership(guild_id)
 
     if data == {}:
-        return jsonify(dict(guild))
+        return dict(guild)
 
     prepare_permissions(member, guild, [GuildPermissions.MODIFY_GUILD])
 
@@ -60,4 +60,4 @@ def modify_guild(data: dict, guild_id: int) -> None:
 
     publish_to_guild(gid['_id'], 'GUILD_UPDATE', gid)
 
-    return jsonify(gid)
+    return gid

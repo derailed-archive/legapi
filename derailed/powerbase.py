@@ -5,7 +5,7 @@ from typing import Any, NoReturn
 
 import flask_limiter.util
 import grpc
-from flask import Response, abort, g, jsonify, request
+from flask import Response, abort, g, request
 from flask_limiter import HEADERS, Limiter, RequestLimit
 
 from .authorizer import auth as auth_medium
@@ -13,6 +13,7 @@ from .database import Channel, Guild, Member, Role, User, db
 from .grpc import derailed_pb2_grpc
 from .grpc.derailed_pb2 import GetGuildInfo, Message, Publ, RepliedGuildInfo, UPubl
 from .identification import medium
+from .json import proper
 from .permissions import (
     GuildPermission,
     has_bit,
@@ -70,7 +71,11 @@ def prepare_user(user: User, own: bool = False) -> dict[str, Any]:
 
 
 def abort_auth() -> NoReturn:
-    abort(jsonify({'_errors': {'headers': {'authorization': ['invalid or missing']}}}), status=401)
+    abort(proper({'_errors': {'headers': {'authorization': ['invalid or missing']}}}, status=401))
+
+
+def abort_forb() -> NoReturn:
+    abort(proper({'_errors': ['You are forbidden from doing the following action']}, status=403))
 
 
 user_channel = grpc.insecure_channel(os.getenv('USER_CHANNEL'))
@@ -97,7 +102,7 @@ def prepare_guild(guild_id: int) -> Guild:
     guild = db.guilds.find_one({'_id': guild_id})
 
     if guild is None:
-        abort(jsonify({'_errors': 'Guild does not exist'}), status=404)
+        abort(proper({'_errors': 'Guild does not exist'}, status=404))
 
     return guild
 
@@ -111,7 +116,7 @@ def prepare_membership(guild_id: int) -> tuple[Guild, Member]:
     member = db.members.find_one({'user_id': g.user['_id']})
 
     if member is None:
-        abort(jsonify({'_errors': 'User is not a member of Guild'}), status=403)
+        abort(proper({'_errors': 'User is not a member of Guild'}, status=403))
 
     member = dict(member)
     member.pop('_id')
@@ -141,7 +146,7 @@ def prepare_permissions(member: Member, guild: Guild, required_permissions: list
 
     for perm in required_permissions:
         if not has_bit(perms, perm):
-            abort(jsonify({'_errors': ['Invalid Permissions']}), status=403)
+            abort(proper({'_errors': ['Invalid Permissions']}, status=403))
 
 
 CHANNEL_REGEX = re.compile(r'^[a-z0-9](?:[a-z0-9-_]{0,30}[a-z0-9])?$')
@@ -190,7 +195,21 @@ def prepare_guild_channel(channel_id: int, guild: Guild) -> Channel:
     channel = db.channels.find_one({'_id': channel_id, 'guild_id': guild['_id']})
 
     if channel is None:
-        abort(jsonify({'_errors': ['Channel not found']}), status=404)
+        abort(proper({'_errors': ['Channel not found']}, status=404))
+
+    return channel
+
+
+def prepare_channel(channel_id: int) -> Channel:
+    if g.get('user', None) is None:
+        abort_auth()
+
+    channel_id = str(channel_id)
+
+    channel = db.channels.find_one({'_id': channel_id})
+
+    if channel is None:
+        abort(proper({'_errors': ['Channel not found']}, status=404))
 
     return channel
 

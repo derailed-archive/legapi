@@ -1,12 +1,13 @@
 from random import randint
 
 import bcrypt
-from flask import Blueprint, abort, g, jsonify
+from flask import Blueprint, abort, g
 from webargs import fields, flaskparser, validate
 
 from ..authorizer import auth
 from ..database import User, db
 from ..identification import medium, version
+from ..json import proper
 from ..powerbase import abort_auth, limiter, prepare_user, publish_to_user
 
 router = Blueprint('user', __name__)
@@ -48,7 +49,7 @@ def register_user(data: dict) -> User:
         break
 
     if discrim is None:
-        abort(jsonify({'_errors': {'username': ['Discriminator not available']}}, 400))
+        abort(proper({'_errors': {'username': ['Discriminator not available']}}, 400))
 
     user_id = medium.snowflake()
     password = bcrypt.hashpw(data['password'].encode(), bcrypt.gensalt(14)).decode()
@@ -59,6 +60,9 @@ def register_user(data: dict) -> User:
         'discriminator': discrim,
         'email': data['email'],
         'password': password,
+        'flags': 0,
+        'system': False,
+        'suspended': False,
     }
 
     db.users.insert_one(usr)
@@ -66,7 +70,7 @@ def register_user(data: dict) -> User:
 
     usr['token'] = auth.form(user_id, password)
 
-    return jsonify(usr), 201
+    return usr, 201
 
 
 @version('/users/@me', 1, router, 'PATCH')
@@ -107,15 +111,15 @@ def patch_me(data: dict) -> None:
     old_password = data.get('old_password')
 
     if password is None and old_password:
-        abort(jsonify({'_errors': {'password': ['Missing field']}}), status=400)
+        abort(proper({'_errors': {'password': ['Missing field']}}, status=400))
 
     if password and not old_password:
-        abort(jsonify({'_errors': {'old_password': ['Missing field']}}), status=400)
+        abort(proper({'_errors': {'old_password': ['Missing field']}}, status=400))
 
     is_pw = bcrypt.checkpw(old_password.encode(), g.user['password'].encode())
 
     if not is_pw:
-        abort(jsonify({'_errors': 'Invalid Password'}), status=400)
+        abort(proper({'_errors': 'Invalid Password'}, status=400))
 
     user = g.user
     user['password'] = password
@@ -143,7 +147,7 @@ def patch_me(data: dict) -> None:
                 break
 
             if discrim is None:
-                abort(jsonify({'_errors': {'username': ['Discriminator not available']}}, 400))
+                abort(proper({'_errors': {'username': ['Discriminator not available']}}, 400))
 
             user['username'] = data['username']
             data['discriminator'] = discrim
@@ -153,7 +157,7 @@ def patch_me(data: dict) -> None:
     usr = prepare_user(user, True)
     publish_to_user(user['_id'], 'USER_UPDATE', usr)
 
-    return jsonify(usr)
+    return usr
 
 
 @version('/users/@me', 1, router, 'GET')
