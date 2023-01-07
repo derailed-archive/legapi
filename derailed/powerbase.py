@@ -6,7 +6,7 @@ from typing import Any, NoReturn
 import flask_limiter.util
 import grpc
 from flask import Response, abort, g, jsonify, request
-from flask_limiter import HEADERS, Limiter
+from flask_limiter import HEADERS, Limiter, RequestLimit
 
 from .authorizer import auth as auth_medium
 from .database import Channel, Guild, Member, Role, User, db
@@ -42,6 +42,10 @@ def get_key_value() -> str:
         return flask_limiter.util.get_remote_address()
     else:
         return user['_id']
+
+
+def respond_rate_limited(limit: RequestLimit) -> Response:
+    return {'retry_at': limit.reset_at}
 
 
 limiter = Limiter(
