@@ -72,6 +72,7 @@ class StatusableActivity(BaseActivity):
 
 class Presence(TypedDict):
     _id: str
+    guild_id: str
     device: Literal['mobile', 'desktop', 'web']
     activities: list[StatusableActivity]
     status: Literal['online', 'invisible', 'dnd']
