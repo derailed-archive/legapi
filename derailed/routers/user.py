@@ -170,7 +170,7 @@ def get_me() -> None:
 
 
 @version('/login', 1, router, 'POST')
-@limiter.limit('2/minute')
+@limiter.limit('5/minute')
 @flaskparser.use_args(
     {
         'email': fields.String(
@@ -189,19 +189,17 @@ def get_me() -> None:
     }
 )
 def login(data: dict) -> None:
-    if g.user is not None:
-        abort_auth()
-
     user = db.users.find_one({'email': data['email']})
 
     if user is None:
         abort_auth()
 
-    true_pw = bcrypt.checkpw(user['password'].encode(), data['password'].encode())
+    true_pw = bcrypt.checkpw(data['password'].encode(), user['password'].encode())
 
     if not true_pw:
         abort_auth()
 
     usr = dict(user)
     usr['token'] = auth.form(user['_id'], user['password'])
+
     return prepare_user(usr, True)

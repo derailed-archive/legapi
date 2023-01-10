@@ -163,7 +163,7 @@ def modify_channel(data: dict, guild_id: int, channel_id: int) -> None:
     return channel_copy
 
 
-@version('/guilds/<int:guild_id>/channels/<int:channel_id>')
+@version('/guilds/<int:guild_id>/channels/<int:channel_id>', 1, router, 'DELETE')
 def delete_channel(guild_id: int, channel_id: int) -> None:
     guild, member = prepare_membership(guild_id)
 

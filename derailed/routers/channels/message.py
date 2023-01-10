@@ -26,7 +26,7 @@ def get_messages(channel_id: int) -> None:
     if channel.get('guild_id') is not None:
         guild, member = prepare_membership(channel['guild_id'])
 
-        prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY])
+        prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
 
     try:
         limit = request.args.get('limit', 50, int)
@@ -42,13 +42,13 @@ def get_messages(channel_id: int) -> None:
 
 
 @version('/channels/<int:channel_id>/messages/<int:message_id>', 1, router, 'GET')
-def get_messages(channel_id: int, message_id: int) -> None:
+def get_message(channel_id: int, message_id: int) -> None:
     channel = prepare_channel(channel_id)
 
     if channel.get('guild_id') is not None:
         guild, member = prepare_membership(channel['guild_id'])
 
-        prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY])
+        prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
 
     message = db.messages.find_one({'_id': message_id, 'channel_id': channel['_id']})
 
@@ -120,7 +120,7 @@ def delete_message(channel_id: int, message_id: int) -> None:
     if message is None:
         return {'_errors': ['Message does not exist']}, 404
 
-    if message['author_id'] == g.user['id']:
+    if message['author_id'] == g.user['_id']:
         db.messages.delete_one({'_id': message_id})
         return plain_resp()
 
