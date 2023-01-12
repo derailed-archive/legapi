@@ -12,10 +12,10 @@ class UserRouter:
         assert resp.json['email'] == 'test'
         with pytest.raises(KeyError):
             resp.json['password']
-        assert isinstance(resp.json['_id'], str)
+        assert isinstance(resp.json['id'], str)
         assert isinstance(resp.json['discriminator'], str)
-        assert resp.json['system'] == False
-        assert resp.json['suspended'] == False
+        assert resp.json['system'] is False
+        assert resp.json['suspended'] is False
         assert resp.json['token']
         pytest.user_token = resp.json['token']
 
@@ -26,9 +26,9 @@ class UserRouter:
         assert resp.json['email'] == 'test'
         with pytest.raises(KeyError):
             resp.json['password']
-        assert isinstance(resp.json['_id'], str)
+        assert isinstance(resp.json['id'], str)
         assert isinstance(resp.json['discriminator'], str)
-        assert resp.json['system'] == False
-        assert resp.json['suspended'] == False
+        assert resp.json['system'] is False
+        assert resp.json['suspended'] is False
         with pytest.raises(KeyError):
             assert resp.json['token']

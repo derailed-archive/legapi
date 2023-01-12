@@ -18,7 +18,7 @@ DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
 
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'derailed_pb2', globals())
-if _descriptor._USE_C_DESCRIPTORS == False:
+if _descriptor._USE_C_DESCRIPTORS is False:
 
     DESCRIPTOR._options = None
     DESCRIPTOR._serialized_options = b'\n\021one.derailed.grpcB\rDerailedProtoP\001\242\002\004DRLP'

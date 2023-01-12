@@ -14,23 +14,23 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import msgspec
+from datetime import datetime
+from enum import Enum
+
+from sqlalchemy import BigInteger, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column
+
+from .base import Base
 
 
-class Decoder:
-    def __init__(self, **kwargs):
-        # eventually take into consideration when deserializing
-        self.options = kwargs
-
-    def decode(self, obj):
-        return msgspec.json.decode(obj, type=dict)
+class ActivityType(Enum):
+    CUSTOM = 0
 
 
-class Encoder:
-    def __init__(self, **kwargs):
-        # eventually take into consideration when serializing
-        self.options = kwargs
+class Activity(Base):
+    __tablename__ = 'activities'
 
-    def encode(self, obj):
-        # decode back to str, as orjson returns bytes
-        return msgspec.json.encode(obj).decode('utf-8')
+    user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
+    type: Mapped[ActivityType]
+    created_at: Mapped[datetime]
+    content: Mapped[str]

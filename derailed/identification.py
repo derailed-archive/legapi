@@ -1,3 +1,19 @@
+"""
+Copyright (C) 2021-2023 Derailed.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 import os
 import secrets
 import threading
@@ -5,9 +21,10 @@ import time
 from random import randint
 from typing import Callable
 
-from flask import Blueprint
+from fastapi import APIRouter
 
 versions = 1
+default_version = 1
 
 
 class IDMedium:
@@ -15,7 +32,7 @@ class IDMedium:
         self._incr: int = 0
         self._epoch = epoch
 
-    def snowflake(self) -> str:
+    def snowflake(self) -> int:
         current_ms = int(time.time() * 1000)
         epoch = current_ms - self._epoch << 22
 
@@ -33,7 +50,7 @@ class IDMedium:
 
         self._incr += 1
 
-        return str(epoch)
+        return epoch
 
     def invite(self) -> str:
         return secrets.token_urlsafe(randint(4, 9))
@@ -43,7 +60,12 @@ medium = IDMedium()
 
 
 def version(
-    path: str, minimum_version: int, bp: Blueprint, method: str, exclude_versions_higher: int = 0, **kwargs
+    path: str,
+    minimum_version: int,
+    router: APIRouter,
+    method: str,
+    exclude_versions_higher: int = 0,
+    **kwargs,
 ) -> Callable:
     def wrapper(func: Callable) -> Callable:
         for version in range(versions):
@@ -56,7 +78,10 @@ def version(
             elif exclude_versions_higher > version:
                 break
 
-            bp.add_url_rule(f'/v{minimum_version}{path}', view_func=func, methods=[method], **kwargs)
+            router.add_route(f'/v{minimum_version}{path}', func, methods=[method], **kwargs)
+
+            if minimum_version == default_version:
+                router.add_route(f'/v{default_version}{path}', func, methods=[method], **kwargs)
         return func
 
     return wrapper

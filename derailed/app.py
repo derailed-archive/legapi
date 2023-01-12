@@ -1,83 +1,40 @@
-import dotenv
-from gevent import monkey
+"""
+Copyright (C) 2021-2023 Derailed.
 
-if monkey.is_anything_patched() is False:
-    monkey.patch_all()
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-import marshmallow
-from flask import Flask, Response, g, request
-from flask_cors import CORS
-from webargs.flaskparser import parser
-import werkzeug.exceptions
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
 
-dotenv.load_dotenv()
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+from dotenv import load_dotenv
+from fastapi import FastAPI, Request
 
-from .json import Decoder, Encoder
-from .powerbase import authorize_user, limiter
+load_dotenv()
+
+from .powerbase import rate_limiter
+
+# routers
 from .routers import user
-from .routers.guilds import guild_information, guild_management
 from .routers.channels import guild_channel, message
+from .routers.guilds import guild_information, guild_management
 
-app = Flask(__name__)
-CORS(app, supports_credentials=True)
-app.json_encoder = Encoder
-app.json_decoder = Decoder
-limiter.init_app(app)
-parser.DEFAULT_VALIDATION_STATUS = 400
-parser.DEFAULT_LOCATION = 'json_or_form'
-
-# connect blueprints
-app.register_blueprint(user.router)
-app.register_blueprint(guild_information.router)
-app.register_blueprint(guild_management.router)
-app.register_blueprint(guild_channel.router)
-app.register_blueprint(message.router)
+app = FastAPI(version='1')
+app.state.limiter = rate_limiter
+app.include_router(user.router)
+app.include_router(guild_information.router)
+app.include_router(guild_management.router)
+app.include_router(guild_channel.router)
+app.include_router(message.router)
 
 
-@app.errorhandler(422)
-@app.errorhandler(400)
-def handle_error(err: werkzeug.exceptions.BadRequest):
-    if not isinstance(err, marshmallow.ValidationError):
-        return {'_error': 'Bad Request'}, 400
-
-    headers = err.data.get('headers', None)
-    messages = err.data.get('messages', [])
-
-    if messages != []:
-        new_messages = messages.get('json_or_form')
-
-        if new_messages is None:
-            return {'_error': messages}, err.code, headers
-        else:
-            messages = new_messages
-    if headers:
-        return {'_errors': messages}, err.code, headers
-    else:
-        return {'_errors': messages}, err.code
-
-
-@app.errorhandler(404)
-def handle_404(*args):
-    return {'message': '404: Not Found', 'code': 0}, 404
-
-
-@app.errorhandler(405)
-def handle_405(*args):
-    return {'message': '405: Invalid Method', 'code': 0}, 405
-
-
-@app.errorhandler(500)
-def handle_500(*args):
-    return {'message': '500: Internal Server Error', 'code': 0}, 500
-
-
-@app.before_request
-def before_request() -> None:
-    g.user = authorize_user()
-
-
-@app.after_request
-def after_request(resp: Response) -> None:
-    g.pop('user', None)
-    resp.headers.add('Via', '1.1 cf + py')
-    return resp
+@app.get('/')
+async def index(request: Request) -> str:
+    return 'hello!'

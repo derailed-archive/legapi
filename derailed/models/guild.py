@@ -1,0 +1,56 @@
+"""
+Copyright (C) 2021-2023 Derailed.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+
+from __future__ import annotations
+
+from sqlalchemy import BigInteger, ForeignKey, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .base import Base
+
+
+class Guild(Base):
+    __tablename__ = 'guilds'
+
+    id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
+    name: Mapped[str]
+    flags: Mapped[int]
+    owner_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'))
+    permissions: Mapped[DefaultPermissions] = relationship()
+
+    @classmethod
+    async def get(cls, session: AsyncSession, guild_id: int) -> Guild | None:
+        stmt = select(cls).where(Guild.id == guild_id)
+        result = await session.execute(stmt)
+        return result.scalar()
+
+
+class DefaultPermissions(Base):
+    __tablename__ = 'default_guild_permissions'
+
+    guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'), primary_key=True)
+    allow: Mapped[int] = mapped_column(BigInteger())
+    deny: Mapped[int] = mapped_column(BigInteger())
+
+
+class Invite(Base):
+    __tablename__ = 'invites'
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'))
+    author_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'))
