@@ -55,6 +55,7 @@ class Member(Base):
     user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
     guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'), primary_key=True)
     nick: Mapped[str | None]
+    role_ids: Mapped[list[int]] = mapped_column(BigInteger(), ForeignKey('roles.id'))
     roles: Mapped[list[Role]] = relationship()
 
     @classmethod

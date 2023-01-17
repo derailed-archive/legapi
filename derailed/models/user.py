@@ -20,7 +20,7 @@ from enum import Enum
 
 from sqlalchemy import BigInteger, ForeignKey, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
 

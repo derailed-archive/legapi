@@ -18,6 +18,7 @@ import asyncio
 import base64
 import binascii
 import json
+import math
 import os
 import re
 from typing import Any, NoReturn
@@ -25,10 +26,10 @@ from typing import Any, NoReturn
 import grpc.aio as grpc
 import slowapi
 import slowapi.util
-from fastapi import Depends, HTTPException, Path, Request
+from fastapi import Depends, HTTPException, Path, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .database import uses_db
+from .database import get_db, to_dict, uses_db
 from .grpc import derailed_pb2_grpc
 from .grpc.auth import auth_pb2_grpc
 from .grpc.auth.auth_pb2 import CreateToken, NewToken, Valid, ValidateToken
@@ -58,7 +59,7 @@ async def uses_auth(request: Request, session: AsyncSession = Depends(uses_db)) 
     except (binascii.Error, UnicodeDecodeError, IndexError):
         abort_auth()
 
-    user = await User.get(session, user_id)
+    user = await User.get(session, int(user_id))
 
     if user is None:
         abort_auth()
@@ -85,7 +86,7 @@ async def uses_no_raises_auth(request: Request, session: AsyncSession = Depends(
     except (binascii.Error, UnicodeDecodeError, IndexError):
         return None
 
-    user = await User.get(session, user_id)
+    user = await User.get(session, int(user_id))
 
     if user is None:
         return None
@@ -98,36 +99,41 @@ async def uses_no_raises_auth(request: Request, session: AsyncSession = Depends(
     return user
 
 
-async def get_key(request: Request, session: AsyncSession = Depends(uses_db)) -> str:
+async def get_key(request: Request) -> str:
     """
     Gets the rate limit key for this request
     """
-    try:
-        # TODO: use the fastapi dependency cache
-        user = await uses_auth(request, session)
-    except HTTPException:
-        return slowapi.util.get_ipaddr(request)
+    session = get_db()
+
+    user = await uses_no_raises_auth(request, session)
+
+    if user:
+        return str(user.id)
     else:
-        return user.id
+        return slowapi.util.get_ipaddr(request)
 
 
-rate_limiter = slowapi.Limiter(
-    get_key,
-    default_limits=['50/second'],
-    headers_enabled=True,
-    strategy='moving-window',
-    storage_uri=os.getenv('STORAGE_URI', 'memory://'),
-    key_prefix='security.derailed.',
-)
+async def default_callback(request: Request, response: Response, pexpire: int):
+    """
+    default callback when too many requests
+    :param request:
+    :param pexpire: The remaining milliseconds
+    :param response:
+    :return:
+    """
+    expire = math.ceil(pexpire / 1000)
+
+    raise HTTPException(429, {'type': 'rate_limited', 'retry_after': expire})
 
 
 def prepare_user(user: User, own: bool = False) -> dict[str, Any]:
-    user = dict(user)
+    user = to_dict(user)
 
     if not own:
         user.pop('email')
 
-    user.pop('password')
+    user.pop('password', None)
+    user.pop('deletor_job_id', None)
     return user
 
 
@@ -167,14 +173,15 @@ async def get_guild_info(guild_id: Any) -> RepliedGuildInfo:
     return await guild_stub.get_guild_info(GetGuildInfo(guild_id=str(guild_id)))
 
 
-async def create_token(user_id: str, password: str) -> str:
-    req: NewToken = auth_stub.create(CreateToken(user_id, password))
+async def create_token(user_id: str | int, password: str) -> str:
+    # stringify user_id just in case it isn't already
+    req: NewToken = await auth_stub.create(CreateToken(user_id=str(user_id), password=password))
 
     return req.token
 
 
 async def valid_authorization(user_id: str, password: str, token: str) -> bool:
-    req: Valid = await auth_stub.validate(ValidateToken(user_id, password, token))
+    req: Valid = await auth_stub.validate(ValidateToken(user_id=user_id, password=password, token=token))
 
     return req.valid
 
@@ -189,7 +196,6 @@ async def prepare_guild(session: AsyncSession, guild_id: int) -> Guild:
 
 
 async def prepare_membership(
-    request: Request,
     guild_id: int = Path(),
     user: User = Depends(uses_auth),
     session: AsyncSession = Depends(uses_db),

@@ -1,7 +1,5 @@
 # fastapi
 fastapi==0.89.1
-slowapi==0.1.7
-limits[redis]==3.1.4
 
 # data
 sqlalchemy[asyncio]==2.0.0rc2

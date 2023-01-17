@@ -40,7 +40,7 @@ class CreateGuild(BaseModel):
     name: str = Field(min_length=1, max_length=30)
 
 
-@version('/guilds', 1, router, 'POST')
+@version('/guilds', 1, router, 'POST', status_code=201)
 async def create_guild(
     request: Request,
     data: CreateGuild,
@@ -65,7 +65,7 @@ async def create_guild(
 
     publish_to_user(user_id=user.id, event='GUILD_CREATE', data=guild)
 
-    return dict(guild), 201
+    return dict(guild)
 
 
 class ModifyGuild(BaseModel):

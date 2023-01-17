@@ -17,9 +17,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 
+from .models.base import Base
+
 load_dotenv()
 
-from .powerbase import rate_limiter
+from .database import engine
 
 # routers
 from .routers import user
@@ -27,12 +29,17 @@ from .routers.channels import guild_channel, message
 from .routers.guilds import guild_information, guild_management
 
 app = FastAPI(version='1')
-app.state.limiter = rate_limiter
 app.include_router(user.router)
 app.include_router(guild_information.router)
 app.include_router(guild_management.router)
 app.include_router(guild_channel.router)
 app.include_router(message.router)
+
+
+@app.on_event('startup')
+async def on_startup() -> None:
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 
 @app.get('/')

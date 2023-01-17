@@ -49,7 +49,7 @@ async def get_messages(
     channel = await prepare_channel(session, channel_id)
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(request, channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel['guild_id'], user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
     else:
@@ -72,7 +72,7 @@ async def get_message(
     channel = await prepare_channel(session, channel_id)
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(request, channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel['guild_id'], user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
     else:
@@ -91,7 +91,7 @@ class CreateMessage(BaseModel):
     content: str = Field(max_length=1, min_length=1024)
 
 
-@version('/channels/{channel_id}/messages', 1, router, 'POST')
+@version('/channels/{channel_id}/messages', 1, router, 'POST', status_code=201)
 async def create_message(
     data: CreateMessage,
     request: Request,
@@ -102,7 +102,7 @@ async def create_message(
     channel = await prepare_channel(session, channel_id)
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(request, channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel['guild_id'], user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
     else:
@@ -113,7 +113,7 @@ async def create_message(
     message = Message(
         id=mid,
         author=user,
-        content=data['content'],
+        content=data.content,
         channel=channel,
         timestamp=datetime.now(),
         edited_timestamp=None,
@@ -126,7 +126,7 @@ async def create_message(
     if channel.guild_id is not None:
         publish_to_guild(channel.guild_id, 'MESSAGE_CREATE', message)
 
-    return message, 201
+    return message
 
 
 class ModifyMessage(BaseModel):
@@ -163,7 +163,7 @@ async def edit_message(
     return message
 
 
-@version('/channels/{channel_id}/messages/{message_id}', 1, router, 'DELETE')
+@version('/channels/{channel_id}/messages/{message_id}', 1, router, 'DELETE', status_code=204)
 async def delete_message(
     channel_id: int,
     message_id: int,
@@ -183,7 +183,7 @@ async def delete_message(
         return ''
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(request, channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel['guild_id'], user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.MODIFY_MESSAGES.value])
 

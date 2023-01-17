@@ -15,6 +15,9 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import os
+from inspect import isbuiltin, isfunction, ismethod
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 engine = create_async_engine(
@@ -23,14 +26,38 @@ engine = create_async_engine(
 )
 
 
-AsyncSessionFactory = async_sessionmaker(engine, autoflush=False, expire_on_commit=False)
+AsyncSessionFactory = async_sessionmaker(engine, autoflush=True, expire_on_commit=False)
 
 
 async def uses_db():
-    async with AsyncSessionFactory() as session:
+    session = AsyncSessionFactory()
+    try:
         yield session
+    except:
+        await session.rollback()
+    finally:
+        await session.close()
 
 
 def get_db() -> AsyncSession:
     session: AsyncSession = AsyncSessionFactory()
     return session
+
+
+def to_dict(self) -> dict[str, Any]:
+    d = {}
+    for k in dir(self):
+        if k == '__dict__':
+            continue
+
+        attr = getattr(self, k)
+
+        if (
+            not isfunction(attr)
+            and k not in ['registry', 'mro', 'metadata']
+            and not k.startswith('_')
+            and not ismethod(attr)
+            and not isbuiltin(attr)
+        ):
+            d[k] = attr
+    return d

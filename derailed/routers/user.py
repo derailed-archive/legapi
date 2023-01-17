@@ -16,14 +16,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 from random import randint
 
-import bcrypt
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 from fastapi import APIRouter, Depends, HTTPException, Request, exceptions
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import uses_db
+from ..database import to_dict, uses_db
 from ..identification import medium, version
 from ..models import Settings, User
+from ..models.user import DefaultStatus
 from ..powerbase import (
     abort_auth,
     create_token,
@@ -35,6 +37,8 @@ from ..undefinable import UNDEFINED, Undefined
 
 router = APIRouter()
 
+pw_hsh = PasswordHasher()
+
 
 def generate_discriminator() -> str:
     discrim_number = randint(1, 9999)
@@ -43,16 +47,16 @@ def generate_discriminator() -> str:
 
 class Register(BaseModel):
     username: str = Field(min_length=1, max_length=30)
-    email: str = EmailStr
+    email: EmailStr = Field()
     password: str = Field(min_length=8, max_length=82)
 
 
-@version('/register', 1, router, 'POST')
-async def register_user(data: Register, session: AsyncSession = Depends(uses_db)) -> User:
+@version('/register', 1, router, 'POST', status_code=201)
+async def register_user(request: Request, data: Register, session: AsyncSession = Depends(uses_db)) -> User:
     discrim: str | None = None
     for _ in range(9):
         d = generate_discriminator()
-        if await User.exists(session, data['username'], discrim):
+        if await User.exists(session, data.username, discrim):
             continue
         discrim = d
         break
@@ -61,38 +65,29 @@ async def register_user(data: Register, session: AsyncSession = Depends(uses_db)
         raise exceptions.HTTPException(400, 'No discriminator found')
 
     user_id = medium.snowflake()
-    password = bcrypt.hashpw(data['password'].encode(), bcrypt.gensalt(14)).decode()
-
-    usr = {
-        'id': user_id,
-        'username': data['username'],
-        'discriminator': discrim,
-        'email': data['email'],
-        'password': password,
-        'flags': 0,
-        'system': False,
-        'suspended': False,
-    }
+    password = pw_hsh.hash(data.password)
 
     user = User(
         id=user_id,
-        username=data['username'],
+        username=data.username,
         discriminator=discrim,
-        email=data['email'],
+        email=data.email,
         password=password,
         flags=0,
         system=False,
         suspended=False,
     )
-    settings = Settings(user_id=user_id, status='online')
-
-    await session.add_all([user, settings])
-
+    session.add(user)
+    await session.commit()
+    usr = prepare_user(user, True)
+    settings = Settings(user_id=user.id, status=DefaultStatus.ONLINE)
+    session.add(settings)
     await session.commit()
 
-    usr['token'] = await create_token(str(user_id), password)
+    token = await create_token(str(user_id), password)
+    usr['token'] = token
 
-    return usr, 201
+    return usr
 
 
 class PatchMe(BaseModel):
@@ -109,33 +104,35 @@ async def patch_me(
     if data == {}:
         return prepare_user(user, True)
 
-    password = data.get('password')
-    old_password = data.get('old_password')
+    password = data.password
+    old_password = data.old_password
 
     if password and not old_password:
         raise HTTPException(400, 'Missing old password')
 
-    is_pw = bcrypt.checkpw(old_password.encode(), user.password.encode())
-
-    if not is_pw:
-        raise HTTPException(401, 'Invalid password')
-
     muser = {}
-    muser['password'] = password
+
+    if password:
+        try:
+            pw_hsh.verify(user.password, old_password)
+        except VerifyMismatchError:
+            raise HTTPException(401, 'Invalid password')
+
+        muser['password'] = pw_hsh.hash(password)
 
     if data.get('email'):
-        muser['email'] = data['email']
+        muser['email'] = data.email
 
     if data.get('username'):
-        other_user = await User.exists(session, data['username'], user['discriminator'])
+        other_user = await User.exists(session, data.username, user.discriminator)
 
         if other_user is False:
-            muser['username'] = data['username']
+            muser['username'] = data.username
         else:
             discrim: str | None = None
             for _ in range(9):
                 d = generate_discriminator()
-                if await User.exists(session, data['username'], discrim):
+                if await User.exists(session, data.username, discrim):
                     continue
                 discrim = d
                 break
@@ -143,7 +140,7 @@ async def patch_me(
             if discrim is None:
                 raise HTTPException(400, 'Discriminator unavailable')
 
-            muser['username'] = data['username']
+            muser['username'] = data.username
             muser['discriminator'] = discrim
 
     await user.modify(session, **muser)
@@ -160,7 +157,7 @@ async def get_me(request: Request, user: User = Depends(uses_auth)) -> None:
 
 
 class Login(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 
@@ -171,12 +168,12 @@ async def login(request: Request, data: Login, session: AsyncSession = Depends(u
     if user is None:
         abort_auth()
 
-    true_pw = bcrypt.checkpw(data.email.encode(), user.password.encode())
+    try:
+        pw_hsh.verify(user.password, data.password)
+    except VerifyMismatchError:
+        raise HTTPException(401, 'Invalid password')
 
-    if not true_pw:
-        abort_auth()
-
-    usr = dict(user)
+    usr = prepare_user(user, True)
     usr['token'] = await create_token(user.id, user.password)
 
-    return prepare_user(usr, True)
+    return usr

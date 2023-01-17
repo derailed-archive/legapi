@@ -46,7 +46,7 @@ async def get_channel(
     session: AsyncSession = Depends(uses_db),
     user: User = Depends(uses_auth),
 ) -> None:
-    guild, member = await prepare_membership(request, guild_id, user, session)
+    guild, member = await prepare_membership(guild_id, user, session)
 
     channel = await prepare_guild_channel(session, channel_id, guild)
 
@@ -62,7 +62,7 @@ class CreateChannel(BaseModel):
     parent_id: int | Undefined = Field(UNDEFINED)
 
 
-@version('/guilds/{guild_id}/channels', 1, router, 'POST')
+@version('/guilds/{guild_id}/channels', 1, router, 'POST', status_code=201)
 async def create_channel(
     data: CreateChannel,
     guild_id: int,
@@ -70,7 +70,7 @@ async def create_channel(
     session: AsyncSession = Depends(uses_db),
     user: User = Depends(uses_auth),
 ) -> None:
-    guild, member = await prepare_membership(request, guild_id, user, session)
+    guild, member = await prepare_membership(guild_id, user, session)
 
     prepare_permissions(member, guild, [GuildPermissions.CREATE_CHANNELS.value])
 
@@ -117,7 +117,7 @@ async def create_channel(
 
     publish_to_guild(guild_id, 'CHANNEL_CREATE', dict(channel))
 
-    return channel, 201
+    return channel
 
 
 class ModifyChannel(BaseModel):
@@ -135,7 +135,7 @@ async def modify_channel(
     session: AsyncSession = Depends(uses_db),
     user: User = Depends(uses_auth),
 ) -> None:
-    guild, member = await prepare_membership(request, guild_id, user, session)
+    guild, member = await prepare_membership(guild_id, user, session)
 
     prepare_permissions(member, guild, [GuildPermissions.MODIFY_CHANNELS.value])
 
@@ -144,7 +144,7 @@ async def modify_channel(
     mods = {}
 
     if data.name:
-        mods['name'] = data['name']
+        mods['name'] = data.name
 
     if data.parent_id or data.position:
         if channel.type == ChannelType.CATEGORY:
@@ -180,7 +180,7 @@ async def modify_channel(
     return channel
 
 
-@version('/guilds/{guild_id}/channels/{channel_id}', 1, router, 'DELETE')
+@version('/guilds/{guild_id}/channels/{channel_id}', 1, router, 'DELETE', status_code=204)
 async def delete_channel(
     guild_id: int,
     channel_id: int,
@@ -188,7 +188,7 @@ async def delete_channel(
     session: AsyncSession = Depends(uses_db),
     user: User = Depends(uses_auth),
 ) -> None:
-    guild, member = await prepare_membership(request, guild_id, user, session)
+    guild, member = await prepare_membership(guild_id, user, session)
 
     prepare_permissions(member, guild, [GuildPermissions.MODIFY_CHANNELS.value])
 

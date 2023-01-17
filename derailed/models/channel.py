@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
-from .member import Member
 from .user import User
 
 
@@ -32,7 +31,7 @@ class Message(Base):
     __tablename__ = 'messages'
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
-    author: Mapped[Member | User] = relationship()
+    author_id: Mapped[int] = mapped_column(BigInteger())
     content: Mapped[str]
     channel: Mapped[Channel] = relationship()
     timestamp: Mapped[datetime]
@@ -78,6 +77,7 @@ class Channel(Base):
     guild_id: Mapped[int | None] = mapped_column(ForeignKey('guilds.id'))
     position: Mapped[int | None]
     message_deletor_job_id: Mapped[str | None]
+    member_ids: Mapped[list[int]] = mapped_column(BigInteger(), ForeignKey('users.id'))
     members: Mapped[list[User]] = relationship()
 
     @classmethod

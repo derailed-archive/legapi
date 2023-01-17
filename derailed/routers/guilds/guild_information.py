@@ -21,15 +21,14 @@ from ...database import uses_db
 from ...identification import version
 from ...models.guild import Guild
 from ...models.member import Member
-from ...models.user import User
-from ...powerbase import get_guild_info, prepare_guild, prepare_membership, uses_auth
+from ...powerbase import get_guild_info, prepare_guild, prepare_membership
 
 router = APIRouter()
 
 
 @version('/guilds/{guild_id}/preview', 1, router, 'GET')
 async def get_guild_preview(
-    request: Request, guild_id: int, _: User = Depends(uses_auth), session: AsyncSession = Depends(uses_db)
+    request: Request, guild_id: int, session: AsyncSession = Depends(uses_db)
 ) -> None:
     guild = await prepare_guild(session, guild_id)
 

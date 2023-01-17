@@ -1,5 +1,3 @@
-import uvicorn
-
 """
 Copyright (C) 2021-2023 Derailed
 
@@ -16,8 +14,7 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-from derailed.app import app
+import uvicorn
 
 if __name__ == '__main__':
-    app.debug = True
-    uvicorn.run(app, port=8080)
+    uvicorn.run('derailed.app:app', port=8080, reload=True)
