@@ -231,7 +231,7 @@ def prepare_permissions(member: Member, guild: Guild, required_permissions: list
             raise HTTPException(403, 'Invalid permissions')
 
 
-CHANNEL_REGEX = '^[a-z0-9](?:[a-z0-9-_]{1,30}[a-z0-9])?$'
+CHANNEL_REGEX = '^[a-z0-9](?:[a-z0-9-_]{1,32}[a-z0-9])?$'
 
 
 async def prepare_channel_position(

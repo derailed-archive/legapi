@@ -37,7 +37,7 @@ router = APIRouter()
 
 
 class CreateGuild(BaseModel):
-    name: str = Field(min_length=1, max_length=30)
+    name: str = Field(min_length=1, max_length=32)
 
 
 @version('/guilds', 1, router, 'POST', status_code=201)

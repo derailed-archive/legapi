@@ -17,7 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import BigInteger, ForeignKey
+from sqlalchemy import BigInteger, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
@@ -33,4 +33,4 @@ class Activity(Base):
     user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
     type: Mapped[ActivityType]
     created_at: Mapped[datetime]
-    content: Mapped[str]
+    content: Mapped[str] = mapped_column(String(15))

@@ -16,7 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, ForeignKey, select
+from sqlalchemy import BigInteger, ForeignKey, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -54,7 +54,7 @@ class Member(Base):
 
     user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
     guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'), primary_key=True)
-    nick: Mapped[str | None]
+    nick: Mapped[str | None] = mapped_column(String(32))
     role_ids: Mapped[list[int]] = mapped_column(BigInteger(), ForeignKey('roles.id'))
     roles: Mapped[list[Role]] = relationship()
 

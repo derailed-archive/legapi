@@ -19,7 +19,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 
-from sqlalchemy import BigInteger, ForeignKey, delete, func, select, update
+from sqlalchemy import BigInteger, ForeignKey, String, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,7 +32,7 @@ class Message(Base):
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
     author_id: Mapped[int] = mapped_column(BigInteger())
-    content: Mapped[str]
+    content: Mapped[str] = mapped_column(String(2024))
     channel: Mapped[Channel] = relationship()
     timestamp: Mapped[datetime]
     edited_timestamp: Mapped[datetime | None]
@@ -71,7 +71,7 @@ class Channel(Base):
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
     type: Mapped[ChannelType]
-    name: Mapped[str | None]
+    name: Mapped[str | None] = mapped_column(String(32))
     last_message_id: Mapped[int | None] = mapped_column(ForeignKey('messages.id'))
     parent_id: Mapped[int | None] = mapped_column(ForeignKey('channels.id'))
     guild_id: Mapped[int | None] = mapped_column(ForeignKey('guilds.id'))

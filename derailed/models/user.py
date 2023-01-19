@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import BigInteger, ForeignKey, select, update
+from sqlalchemy import BigInteger, ForeignKey, select, update, String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -31,8 +31,8 @@ class User(Base):
     __tablename__ = 'users'
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
-    username: Mapped[str] = mapped_column(index=True)
-    discriminator: Mapped[str]
+    username: Mapped[str] = mapped_column(String(32), index=True)
+    discriminator: Mapped[str] = mapped_column(String(4))
     email: Mapped[str] = mapped_column(index=True)
     password: Mapped[str]
     flags: Mapped[int]

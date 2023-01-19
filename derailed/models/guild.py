@@ -17,7 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, ForeignKey, select
+from sqlalchemy import BigInteger, ForeignKey, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,7 +28,7 @@ class Guild(Base):
     __tablename__ = 'guilds'
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
-    name: Mapped[str]
+    name: Mapped[str] = mapped_column(String(32))
     flags: Mapped[int]
     owner_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'))
     permissions: Mapped[DefaultPermissions] = relationship()
