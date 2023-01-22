@@ -14,7 +14,13 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import asyncio
+import os
+
+if os.name != 'nt':
+    import asyncio
+    import uvloop
+
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request

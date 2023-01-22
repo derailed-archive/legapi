@@ -22,8 +22,6 @@ import os
 from typing import Any, NoReturn
 
 import grpc.aio as grpc
-import slowapi
-import slowapi.util
 from fastapi import Depends, HTTPException, Path, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -108,7 +106,8 @@ async def get_key(request: Request) -> str:
     if user:
         return str(user.id)
     else:
-        return slowapi.util.get_ipaddr(request)
+        # TODO
+        return ''
 
 
 async def default_callback(request: Request, response: Response, pexpire: int):
@@ -143,31 +142,52 @@ def abort_forb() -> NoReturn:
     raise HTTPException(403, 'Forbidden')
 
 
-user_channel = grpc.insecure_channel(os.environ['USER_CHANNEL'])
-user_stub = derailed_pb2_grpc.UserStub(user_channel)
-guild_channel = grpc.insecure_channel(os.environ['GUILD_CHANNEL'])
-guild_stub = derailed_pb2_grpc.GuildStub(guild_channel)
-auth_channel = grpc.insecure_channel(os.environ['AUTH_CHANNEL'])
-auth_stub = auth_pb2_grpc.AuthorizationStub(auth_channel)
+user_stub = None
+guild_stub = None
+auth_stub = None
+
+
+async def _init_stubs() -> None:
+    global user_stub
+    global guild_stub
+    global auth_stub
+    user_channel = grpc.insecure_channel(os.environ['USER_CHANNEL'])
+    user_stub = derailed_pb2_grpc.UserStub(user_channel)
+    guild_channel = grpc.insecure_channel(os.environ['GUILD_CHANNEL'])
+    guild_stub = derailed_pb2_grpc.GuildStub(guild_channel)
+    auth_channel = grpc.insecure_channel(os.environ['AUTH_CHANNEL'])
+    auth_stub = auth_pb2_grpc.AuthorizationStub(auth_channel)
 
 
 async def publish_to_user(user_id: Any, event: str, data: dict[str, Any]) -> None:
+    if user_stub is None:
+        await _init_stubs()
+
     await user_stub.publish(
             UPubl(user_id=str(user_id), message=Message(event=event, data=json.dumps(dict(data))))
         )
 
 
 async def publish_to_guild(guild_id: Any, event: str, data: dict[str, Any]) -> None:
+    if guild_stub is None:
+        await _init_stubs()
+
     await guild_stub.publish(
             Publ(guild_id=str(guild_id), message=Message(event=event, data=json.dumps(dict(data))))
         )
 
 
 async def get_guild_info(guild_id: int) -> RepliedGuildInfo:
+    if guild_stub is None:
+        await _init_stubs()
+
     return await guild_stub.get_guild_info(GetGuildInfo(guild_id=str(guild_id)))
 
 
 async def create_token(user_id: str | int, password: str) -> str:
+    if auth_stub is None:
+        await _init_stubs()
+
     # stringify user_id just in case it isn't already
     req: NewToken = await auth_stub.create(CreateToken(user_id=str(user_id), password=password))
 
@@ -175,6 +195,9 @@ async def create_token(user_id: str | int, password: str) -> str:
 
 
 async def valid_authorization(user_id: str, password: str, token: str) -> bool:
+    if auth_stub is None:
+        await _init_stubs()
+
     req: Valid = await auth_stub.validate(ValidateToken(user_id=user_id, password=password, token=token))
 
     return req.valid

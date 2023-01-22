@@ -52,7 +52,7 @@ class Register(BaseModel):
 
 
 @version('/register', 1, router, 'POST', status_code=201)
-async def register_user(request: Request, data: Register, session: AsyncSession = Depends(uses_db)) -> User:
+async def register_user(request: Request, data: Register, session: AsyncSession = Depends(uses_db)) -> None:
     discrim: str | None = None
     for _ in range(9):
         d = generate_discriminator()
