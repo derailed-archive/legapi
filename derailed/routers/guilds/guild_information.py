@@ -34,9 +34,7 @@ async def get_guild_preview(
 ) -> None:
     guild = await prepare_guild(session, guild_id)
 
-    t = time()
     guild_info = await get_guild_info(str(guild_id))
-    print(time() - t)
 
     gid = to_dict(guild)
     gid['approximate_presence_count'] = guild_info.presences

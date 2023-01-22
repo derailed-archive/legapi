@@ -66,10 +66,6 @@ class Member(Base):
 
     @classmethod
     async def get(cls, session: AsyncSession, user_id: int, guild_id: int) -> Member | None:
-        stmt = (
-            select(cls)
-            .where(Member.user.any(User.id == user_id))
-            .where(Member.guild.any(Guild.id == guild_id))
-        )
+        stmt = select(cls).where(Member.user_id == user_id).where(Member.guild_id == guild_id)
         result = await session.execute(stmt)
         return result.scalar()

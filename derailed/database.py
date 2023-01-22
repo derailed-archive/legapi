@@ -15,6 +15,7 @@ You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 import os
+from datetime import datetime
 from inspect import isbuiltin, isfunction, ismethod
 from typing import Any
 
@@ -45,6 +46,9 @@ def get_db() -> AsyncSession:
 
 
 def to_dict(self) -> dict[str, Any]:
+    if isinstance(self, list):
+        return [to_dict(obj) for obj in self]
+
     d = {}
     for k in dir(self):
         if k == '__dict__':
@@ -64,4 +68,6 @@ def to_dict(self) -> dict[str, Any]:
             if isinstance(attr, int):
                 if attr > 2_147_483_647:
                     d[k] = str(attr)
+            elif isinstance(attr, datetime):
+                d[k] = attr.isoformat()
     return d

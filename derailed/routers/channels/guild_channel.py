@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...database import uses_db
+from ...database import to_dict, uses_db
 from ...identification import medium, version
 from ...models.channel import Channel, ChannelType
 from ...models.user import User
@@ -53,6 +53,18 @@ async def get_channel(
     prepare_permissions(member, guild, [GuildPermissions.VIEW_CHANNEL.value])
 
     return channel
+
+
+@version('/guilds/{guild_id}/channels', 1, router, 'GET')
+async def get_channels(
+    guild_id: int, request: Request, session: AsyncSession = Depends(uses_db), user: User = Depends(uses_auth)
+) -> None:
+    guild, _ = await prepare_membership(guild_id, user, session)
+
+    # TODO: check permissions
+    channels = await Channel.get_all(session, guild.id)
+
+    return to_dict(channels)
 
 
 class CreateChannel(BaseModel):
@@ -115,7 +127,7 @@ async def create_channel(
     session.add(channel)
     await session.commit()
 
-    await publish_to_guild(guild_id, 'CHANNEL_CREATE', dict(channel))
+    await publish_to_guild(guild_id, 'CHANNEL_CREATE', to_dict(channel))
 
     return channel
 
@@ -175,9 +187,9 @@ async def modify_channel(
 
     await channel.modify(session, **mods)
 
-    await publish_to_guild(guild.id, 'CHANNEL_UPDATE', dict(channel))
+    await publish_to_guild(guild.id, 'CHANNEL_UPDATE', to_dict(channel))
 
-    return channel
+    return to_dict(channel)
 
 
 @version('/guilds/{guild_id}/channels/{channel_id}', 1, router, 'DELETE', status_code=204)

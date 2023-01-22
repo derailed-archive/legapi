@@ -80,7 +80,7 @@ async def modify_guild(
     guild, member = await prepare_membership(guild_id)
 
     if not data.name:
-        return dict(guild)
+        return to_dict(guild)
 
     await prepare_permissions(member, guild, [GuildPermissions.MODIFY_GUILD])
 
@@ -90,6 +90,6 @@ async def modify_guild(
 
     await session.commit()
 
-    await publish_to_guild(guild.id, 'GUILD_UPDATE', dict(guild))
+    await publish_to_guild(guild.id, 'GUILD_UPDATE', to_dict(guild))
 
-    return dict(guild)
+    return to_dict(guild)

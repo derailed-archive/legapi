@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...database import uses_db
+from ...database import to_dict, uses_db
 from ...identification import medium, version
 from ...models.channel import Message
 from ...models.user import User
@@ -46,10 +46,10 @@ async def get_messages(
     session: AsyncSession = Depends(uses_db),
     user: User = Depends(uses_auth),
 ) -> None:
-    channel = await prepare_channel(session, channel_id)
+    channel = await prepare_channel(session, int(channel_id))
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel.guild_id, user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
     else:
@@ -58,7 +58,7 @@ async def get_messages(
 
     messages = await Message.sorted_channel(session, channel, limit)
 
-    return messages
+    return to_dict(messages)
 
 
 @version('/channels/{channel_id}/messages/{message_id}', 1, router, 'GET')
@@ -72,7 +72,7 @@ async def get_message(
     channel = await prepare_channel(session, channel_id)
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel.guild_id, user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
     else:
@@ -84,11 +84,11 @@ async def get_message(
     if message is None:
         raise HTTPException(404, 'Message not found')
 
-    return message
+    return to_dict(message)
 
 
 class CreateMessage(BaseModel):
-    content: str = Field(max_length=1, min_length=1024)
+    content: str = Field(min_length=1, max_length=1024)
 
 
 @version('/channels/{channel_id}/messages', 1, router, 'POST', status_code=201)
@@ -102,7 +102,7 @@ async def create_message(
     channel = await prepare_channel(session, channel_id)
 
     if channel.guild_id is not None:
-        guild, member = await prepare_membership(channel['guild_id'], user, session)
+        guild, member = await prepare_membership(channel.guild_id, user, session)
 
         prepare_permissions(member, guild, [GuildPermissions.VIEW_MESSAGE_HISTORY.value])
     else:
@@ -112,21 +112,25 @@ async def create_message(
     mid = medium.snowflake()
     message = Message(
         id=mid,
-        author=user,
+        author_id=user.id,
         content=data.content,
-        channel=channel,
+        channel_id=channel.id,
         timestamp=datetime.now(),
         edited_timestamp=None,
     )
-    channel.last_message_id = mid
 
-    session.add_all([message, channel])
+    session.add(message)
+    await session.commit()
+
+    channel.last_message_id = message.id
+
+    session.add(channel)
     await session.commit()
 
     if channel.guild_id is not None:
-        await publish_to_guild(channel.guild_id, 'MESSAGE_CREATE', message)
+        await publish_to_guild(channel.guild_id, 'MESSAGE_CREATE', to_dict(message))
 
-    return message
+    return to_dict(message)
 
 
 class ModifyMessage(BaseModel):
@@ -149,7 +153,7 @@ async def edit_message(
     if message is None:
         raise HTTPException(404, 'Message does not exist')
 
-    if message.author.id != user.id:
+    if message.author_id != user.id:
         abort_forb()
 
     message.content = data.content
@@ -158,9 +162,9 @@ async def edit_message(
     await session.commit()
 
     if channel.guild_id is not None:
-        await publish_to_guild(channel.guild_id, 'MESSAGE_EDIT', message)
+        await publish_to_guild(channel.guild_id, 'MESSAGE_EDIT', to_dict(message))
 
-    return message
+    return to_dict(message)
 
 
 @version('/channels/{channel_id}/messages/{message_id}', 1, router, 'DELETE', status_code=204)
@@ -178,7 +182,7 @@ async def delete_message(
     if message is None:
         raise HTTPException(404, 'Message does not exist')
 
-    if message.author.id == user.id:
+    if message.author_id == user.id:
         await message.delete(session, message.id)
         return ''
 

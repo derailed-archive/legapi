@@ -110,24 +110,22 @@ async def patch_me(
     if password and not old_password:
         raise HTTPException(400, 'Missing old password')
 
-    muser = {}
-
     if password:
         try:
             pw_hsh.verify(user.password, old_password)
         except VerifyMismatchError:
             raise HTTPException(401, 'Invalid password')
 
-        muser['password'] = pw_hsh.hash(password)
+        user.password = pw_hsh.hash(password)
 
     if data.get('email'):
-        muser['email'] = data.email
+        user.email = data.email
 
     if data.get('username'):
         other_user = await User.exists(session, data.username, user.discriminator)
 
         if other_user is False:
-            muser['username'] = data.username
+            user.username = data.username
         else:
             discrim: str | None = None
             for _ in range(9):
@@ -140,10 +138,11 @@ async def patch_me(
             if discrim is None:
                 raise HTTPException(400, 'Discriminator unavailable')
 
-            muser['username'] = data.username
-            muser['discriminator'] = discrim
+            user.username = data.username
+            user.discriminator = discrim
 
-    await user.modify(session, **muser)
+    session.add(user)
+    await session.commit()
 
     usr = prepare_user(user, True)
     await publish_to_user(user.id, 'USER_UPDATE', usr)

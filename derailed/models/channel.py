@@ -38,20 +38,13 @@ class Message(Base):
 
     @classmethod
     async def sorted_channel(cls, session: AsyncSession, channel: Channel, limit: int) -> list[Message]:
-        stmt = (
-            select(cls)
-            .where(Message.channel.any(Channel.id == channel.id))
-            .order_by(Message.id.desc())
-            .limit(limit)
-        )
+        stmt = select(cls).where(Message.channel_id == channel.id).order_by(Message.id.desc()).limit(limit)
         result = await session.execute(stmt)
         return result.scalars().all()
 
     @classmethod
     async def get(cls, session: AsyncSession, message_id: int, channel: Channel) -> Message | None:
-        stmt = (
-            select(cls).where(Message.id == message_id).where(Message.channel.any(Channel.id == channel.id))
-        )
+        stmt = select(cls).where(Message.id == message_id).where(Message.channel_id == channel.id)
         result = await session.execute(stmt)
         return result.scalar()
 
@@ -86,13 +79,20 @@ class Channel(Base):
 
     @classmethod
     async def get(cls, session: AsyncSession, id: int, guild_id: int | None = None) -> 'Channel' | None:
-        stmt = select(cls).where(Channel.id == id)
+        stmt = select(cls).where(Channel.id == int(id))
 
         if guild_id:
             stmt = stmt.where(Channel.guild_id == guild_id)
 
         result = await session.execute(stmt)
         return result.scalar()
+
+    @classmethod
+    async def get_all(cls, session: AsyncSession, guild_id: int) -> list['Channel']:
+        stmt = select(cls).where(Channel.guild_id == guild_id)
+
+        result = await session.execute(stmt)
+        return result.scalars().all()
 
     @classmethod
     async def get_with_pos(

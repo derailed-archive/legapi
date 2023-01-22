@@ -164,8 +164,8 @@ async def publish_to_user(user_id: Any, event: str, data: dict[str, Any]) -> Non
         await _init_stubs()
 
     await user_stub.publish(
-            UPubl(user_id=str(user_id), message=Message(event=event, data=json.dumps(dict(data))))
-        )
+        UPubl(user_id=str(user_id), message=Message(event=event, data=json.dumps(dict(data))))
+    )
 
 
 async def publish_to_guild(guild_id: Any, event: str, data: dict[str, Any]) -> None:
@@ -173,8 +173,8 @@ async def publish_to_guild(guild_id: Any, event: str, data: dict[str, Any]) -> N
         await _init_stubs()
 
     await guild_stub.publish(
-            Publ(guild_id=str(guild_id), message=Message(event=event, data=json.dumps(dict(data))))
-        )
+        Publ(guild_id=str(guild_id), message=Message(event=event, data=json.dumps(dict(data))))
+    )
 
 
 async def get_guild_info(guild_id: int) -> RepliedGuildInfo:
@@ -228,7 +228,7 @@ async def prepare_membership(
 
 
 def prepare_permissions(member: Member, guild: Guild, required_permissions: list[int]) -> None:
-    if guild['owner_id'] == member['user_id']:
+    if guild.owner_id == member.user_id:
         return
 
     roles = member.roles

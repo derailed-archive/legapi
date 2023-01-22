@@ -77,7 +77,7 @@ class GuildPosition(Base):
     async def get_for(cls, session: AsyncSession, user: User) -> list[GuildPosition]:
         stmt = (
             select(cls)
-            .where(GuildPosition.user == user)
+            .where(GuildPosition.user_id == user.id)
             .column(GuildPosition.guild_id)
             .column(GuildPosition.position)
         )
@@ -100,6 +100,6 @@ class Settings(Base):
 
     @classmethod
     async def get(cls, session: AsyncSession, user: User) -> Settings | None:
-        stmt = select(cls).where(Settings.user == user)
+        stmt = select(cls).where(Settings.user_id == user.id)
         result = await session.execute(stmt)
         return result.scalar()

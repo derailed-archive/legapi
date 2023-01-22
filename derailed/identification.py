@@ -81,7 +81,7 @@ def version(
             router.add_api_route(f'/v{minimum_version}{path}', func, methods=[method], **kwargs)
 
             if minimum_version == default_version:
-                router.add_api_route(f'/v{default_version}{path}', func, methods=[method], **kwargs)
+                router.add_api_route(f'/{path}', func, methods=[method], **kwargs)
         return func
 
     return wrapper
