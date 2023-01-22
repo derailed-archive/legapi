@@ -28,7 +28,7 @@ That service then handles it from there.
 
 ## Speedups
 
-At every step, we try to use any speedup possible.
+At every step, we try to use every speedup possible.
 
 We use msgspec as an alternative json library which is
 faster than the stdlib json, and orjson.
