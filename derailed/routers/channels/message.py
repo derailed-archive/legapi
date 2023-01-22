@@ -124,7 +124,7 @@ async def create_message(
     await session.commit()
 
     if channel.guild_id is not None:
-        publish_to_guild(channel.guild_id, 'MESSAGE_CREATE', message)
+        await publish_to_guild(channel.guild_id, 'MESSAGE_CREATE', message)
 
     return message
 
@@ -158,7 +158,7 @@ async def edit_message(
     await session.commit()
 
     if channel.guild_id is not None:
-        publish_to_guild(channel.guild_id, 'MESSAGE_EDIT', message)
+        await publish_to_guild(channel.guild_id, 'MESSAGE_EDIT', message)
 
     return message
 
@@ -190,7 +190,7 @@ async def delete_message(
     await message.delete(session, message.id)
 
     if channel.guild_id is not None:
-        publish_to_guild(
+        await publish_to_guild(
             channel.guild_id,
             'MESSAGE_DELETE',
             {'message_id': str(message_id), 'guild_id': str(channel.guild_id), 'channel_id': str(channel.id)},

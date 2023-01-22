@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from sqlalchemy import BigInteger, ForeignKey, select, update, String
+from sqlalchemy import BigInteger, ForeignKey, String, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 

@@ -17,9 +17,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
-from ...database import AsyncSession, uses_db
+from ...database import AsyncSession, to_dict, uses_db
 from ...identification import medium, version
-from ...models.guild import DefaultPermissions, Guild
+from ...models.guild import Guild
 from ...models.member import Member
 from ...models.user import User
 from ...permissions import DEFAULT_PERMISSIONS, GuildPermissions
@@ -47,25 +47,26 @@ async def create_guild(
     session: AsyncSession = Depends(uses_db),
     user: User = Depends(uses_auth),
 ) -> None:
-    permissions = DefaultPermissions(allow=DEFAULT_PERMISSIONS, deny=0)
     guild = Guild(
         id=medium.snowflake(),
         name=data.name,
         owner_id=user.id,
         flags=0,
-        permissions=permissions,
+        permissions=DEFAULT_PERMISSIONS,
     )
-    member = Member(user=user, guild=guild, nick=None, roles=[])
-
-    session.add_all([permissions, guild, member])
-
-    prepare_default_channels(guild)
+    session.add(guild)
+    member = Member(user_id=user.id, guild_id=guild.id, nick=None)
+    session.add(member)
 
     await session.commit()
 
-    publish_to_user(user_id=user.id, event='GUILD_CREATE', data=guild)
+    prepare_default_channels(guild, session)
 
-    return dict(guild)
+    await session.commit()
+
+    await publish_to_user(user_id=user.id, event='GUILD_CREATE', data=to_dict(guild))
+
+    return to_dict(guild)
 
 
 class ModifyGuild(BaseModel):
@@ -89,6 +90,6 @@ async def modify_guild(
 
     await session.commit()
 
-    publish_to_guild(guild.id, 'GUILD_UPDATE', dict(guild))
+    await publish_to_guild(guild.id, 'GUILD_UPDATE', dict(guild))
 
     return dict(guild)

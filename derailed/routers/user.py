@@ -146,7 +146,7 @@ async def patch_me(
     await user.modify(session, **muser)
 
     usr = prepare_user(user, True)
-    publish_to_user(user.id, 'USER_UPDATE', usr)
+    await publish_to_user(user.id, 'USER_UPDATE', usr)
 
     return usr
 

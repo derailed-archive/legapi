@@ -39,7 +39,7 @@ class Role(Base):
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
     guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'), index=True)
     name: Mapped[str]
-    permissions: Mapped[RolePermissions] = relationship(uselist=False)
+    permissions: Mapped[RolePermissions] = relationship()
     position: Mapped[int]
 
     @classmethod
@@ -49,14 +49,20 @@ class Role(Base):
         return result.scalar()
 
 
+class MemberRole(Base):
+    __tablename__ = 'member_roles'
+
+    user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
+    role_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('roles.id'), primary_key=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'))
+
+
 class Member(Base):
     __tablename__ = 'members'
 
     user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
     guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'), primary_key=True)
     nick: Mapped[str | None] = mapped_column(String(32))
-    role_ids: Mapped[list[int]] = mapped_column(BigInteger(), ForeignKey('roles.id'))
-    roles: Mapped[list[Role]] = relationship()
 
     @classmethod
     async def get(cls, session: AsyncSession, user_id: int, guild_id: int) -> Member | None:

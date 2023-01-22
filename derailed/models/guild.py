@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from sqlalchemy import BigInteger, ForeignKey, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
 
@@ -31,21 +31,13 @@ class Guild(Base):
     name: Mapped[str] = mapped_column(String(32))
     flags: Mapped[int]
     owner_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'))
-    permissions: Mapped[DefaultPermissions] = relationship()
+    permissions: Mapped[int] = mapped_column(BigInteger())
 
     @classmethod
     async def get(cls, session: AsyncSession, guild_id: int) -> Guild | None:
         stmt = select(cls).where(Guild.id == guild_id)
         result = await session.execute(stmt)
         return result.scalar()
-
-
-class DefaultPermissions(Base):
-    __tablename__ = 'default_guild_permissions'
-
-    guild_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('guilds.id'), primary_key=True)
-    allow: Mapped[int] = mapped_column(BigInteger())
-    deny: Mapped[int] = mapped_column(BigInteger())
 
 
 class Invite(Base):

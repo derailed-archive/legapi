@@ -21,19 +21,18 @@ from enum import Enum
 
 from sqlalchemy import BigInteger, ForeignKey, String, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base
-from .user import User
 
 
 class Message(Base):
     __tablename__ = 'messages'
 
     id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
-    author_id: Mapped[int] = mapped_column(BigInteger())
+    author_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'))
     content: Mapped[str] = mapped_column(String(2024))
-    channel: Mapped[Channel] = relationship()
+    channel_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('channels.id'))
     timestamp: Mapped[datetime]
     edited_timestamp: Mapped[datetime | None]
 
@@ -66,6 +65,13 @@ class ChannelType(Enum):
     TEXT = 1
 
 
+class ChannelMember(Base):
+    __tablename__ = 'channel_members'
+
+    channel_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('channels.id'), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'))
+
+
 class Channel(Base):
     __tablename__ = 'channels'
 
@@ -77,8 +83,6 @@ class Channel(Base):
     guild_id: Mapped[int | None] = mapped_column(ForeignKey('guilds.id'))
     position: Mapped[int | None]
     message_deletor_job_id: Mapped[str | None]
-    member_ids: Mapped[list[int]] = mapped_column(BigInteger(), ForeignKey('users.id'))
-    members: Mapped[list[User]] = relationship()
 
     @classmethod
     async def get(cls, session: AsyncSession, id: int, guild_id: int | None = None) -> 'Channel' | None:

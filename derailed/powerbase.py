@@ -14,13 +14,11 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import asyncio
 import base64
 import binascii
 import json
 import math
 import os
-import re
 from typing import Any, NoReturn
 
 import grpc.aio as grpc
@@ -33,9 +31,9 @@ from .database import get_db, to_dict, uses_db
 from .grpc import derailed_pb2_grpc
 from .grpc.auth import auth_pb2_grpc
 from .grpc.auth.auth_pb2 import CreateToken, NewToken, Valid, ValidateToken
-from .grpc.derailed_pb2 import GetGuildInfo, Publ, RepliedGuildInfo, UPubl
+from .grpc.derailed_pb2 import GetGuildInfo, Message, Publ, RepliedGuildInfo, UPubl
 from .identification import medium
-from .models import Channel, Guild, Member, Message, User
+from .models import Channel, Guild, Member, User
 from .models.channel import ChannelType
 from .permissions import (
     GuildPermission,
@@ -153,23 +151,19 @@ auth_channel = grpc.insecure_channel(os.environ['AUTH_CHANNEL'])
 auth_stub = auth_pb2_grpc.AuthorizationStub(auth_channel)
 
 
-def publish_to_user(user_id: Any, event: str, data: dict[str, Any]) -> None:
-    asyncio.create_task(
-        user_stub.publish(
+async def publish_to_user(user_id: Any, event: str, data: dict[str, Any]) -> None:
+    await user_stub.publish(
             UPubl(user_id=str(user_id), message=Message(event=event, data=json.dumps(dict(data))))
         )
-    )
 
 
-def publish_to_guild(guild_id: Any, event: str, data: dict[str, Any]) -> None:
-    asyncio.create_task(
-        guild_stub.publish(
+async def publish_to_guild(guild_id: Any, event: str, data: dict[str, Any]) -> None:
+    await guild_stub.publish(
             Publ(guild_id=str(guild_id), message=Message(event=event, data=json.dumps(dict(data))))
         )
-    )
 
 
-async def get_guild_info(guild_id: Any) -> RepliedGuildInfo:
+async def get_guild_info(guild_id: int) -> RepliedGuildInfo:
     return await guild_stub.get_guild_info(GetGuildInfo(guild_id=str(guild_id)))
 
 

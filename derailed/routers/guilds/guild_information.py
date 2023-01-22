@@ -14,10 +14,12 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+from time import time
+
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...database import uses_db
+from ...database import to_dict, uses_db
 from ...identification import version
 from ...models.guild import Guild
 from ...models.member import Member
@@ -32,9 +34,11 @@ async def get_guild_preview(
 ) -> None:
     guild = await prepare_guild(session, guild_id)
 
+    t = time()
     guild_info = await get_guild_info(str(guild_id))
+    print(time() - t)
 
-    gid = dict(guild)
+    gid = to_dict(guild)
     gid['approximate_presence_count'] = guild_info.presences
     gid['available'] = guild_info.available
 
@@ -43,4 +47,4 @@ async def get_guild_preview(
 
 @version('/guilds/{guild_id}', 1, router, 'GET')
 async def get_guild(request: Request, md: tuple[Guild, Member] = Depends(prepare_membership)) -> None:
-    return md[0]
+    return to_dict(md[0])

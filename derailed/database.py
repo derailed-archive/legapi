@@ -26,7 +26,7 @@ engine = create_async_engine(
 )
 
 
-AsyncSessionFactory = async_sessionmaker(engine, autoflush=True, expire_on_commit=False)
+AsyncSessionFactory = async_sessionmaker(engine, autoflush=True, expire_on_commit=False, autobegin=True)
 
 
 async def uses_db():
@@ -60,4 +60,8 @@ def to_dict(self) -> dict[str, Any]:
             and not isbuiltin(attr)
         ):
             d[k] = attr
+
+            if isinstance(attr, int):
+                if attr > 2_147_483_647:
+                    d[k] = str(attr)
     return d
