@@ -70,7 +70,7 @@ class GuildPosition(Base):
     __tablename__ = 'guild_positions'
 
     user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
-    guild_id: Mapped[int] = mapped_column(BigInteger())
+    guild_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True)
     position: Mapped[int]
 
     @classmethod
