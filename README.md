@@ -41,7 +41,7 @@ which *also* requires Linux, or our Docker image.
 
 ## Benchmarks
 
-We have yet to perform benchmarks on Derailed,
-but in the future we may to see any bottlenecks and other such.
+We have yet to perform benchmarks on Derailed.
+Although in the future we may to try and itch out any bottlenecks, and other possible failures.
 
 First off though a good starting point may just be writing tests.
