@@ -1,16 +1,43 @@
+"""
+Copyright (C) 2021-2023 Derailed.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 from random import randint
 
-import bcrypt
-from flask import Blueprint, abort, g
-from webargs import fields, flaskparser, validate
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
+from fastapi import APIRouter, Depends, HTTPException, Request, exceptions
+from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..authorizer import auth
-from ..database import User, db
+from ..database import to_dict, uses_db
 from ..identification import medium, version
-from ..json import proper
-from ..powerbase import abort_auth, limiter, prepare_user, publish_to_user
+from ..models import Settings, User
+from ..models.user import DefaultStatus
+from ..powerbase import (
+    abort_auth,
+    create_token,
+    prepare_user,
+    publish_to_user,
+    uses_auth,
+)
+from ..undefinable import UNDEFINED, Undefined
 
-router = Blueprint('user', __name__)
+router = APIRouter()
+
+pw_hsh = PasswordHasher()
 
 
 def generate_discriminator() -> str:
@@ -18,188 +45,134 @@ def generate_discriminator() -> str:
     return '%04d' % discrim_number
 
 
-@version('/register', 1, router, 'POST')
-@flaskparser.use_args(
-    {
-        'username': fields.String(required=True, allow_none=False, validate=validate.Length(1, 30)),
-        'email': fields.String(
-            required=True,
-            allow_none=False,
-            validate=(validate.Email(), validate.Length(min=5, max=25)),
-        ),
-        'password': fields.String(
-            required=True,
-            allow_none=False,
-            validate=validate.Length(
-                min=8,
-                max=30,
-            ),
-        ),
-    }
-)
-@limiter.limit('3/hour')
-def register_user(data: dict) -> User:
+class Register(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+    email: EmailStr = Field()
+    password: str = Field(min_length=8, max_length=82)
+
+
+@version('/register', 1, router, 'POST', status_code=201)
+async def register_user(request: Request, data: Register, session: AsyncSession = Depends(uses_db)) -> None:
     discrim: str | None = None
     for _ in range(9):
         d = generate_discriminator()
-        q = len(list(db.users.find({'username': data['username'], 'discriminator': d})))
-        if q >= 1:
+        if await User.exists(session, data.username, discrim):
             continue
         discrim = d
         break
 
     if discrim is None:
-        abort(proper({'_errors': {'username': ['Discriminator not available']}}, 400))
+        raise exceptions.HTTPException(400, 'No discriminator found')
 
     user_id = medium.snowflake()
-    password = bcrypt.hashpw(data['password'].encode(), bcrypt.gensalt(14)).decode()
+    password = pw_hsh.hash(data.password)
 
-    usr = {
-        '_id': user_id,
-        'username': data['username'],
-        'discriminator': discrim,
-        'email': data['email'],
-        'password': password,
-        'flags': 0,
-        'system': False,
-        'suspended': False,
-    }
+    user = User(
+        id=user_id,
+        username=data.username,
+        discriminator=discrim,
+        email=data.email,
+        password=password,
+        flags=0,
+        system=False,
+        suspended=False,
+    )
+    session.add(user)
+    await session.commit()
+    usr = prepare_user(user, True)
+    settings = Settings(user_id=user.id, status=DefaultStatus.ONLINE)
+    session.add(settings)
+    await session.commit()
 
-    db.users.insert_one(usr)
-    db.settings.insert_one({'_id': user_id, 'status': 'online', 'guild_order': []})
+    token = await create_token(str(user_id), password)
+    usr['token'] = token
 
-    usr['token'] = auth.form(user_id, password)
+    return usr
 
-    return usr, 201
+
+class PatchMe(BaseModel):
+    username: str | Undefined = Field(UNDEFINED, min_length=1, max_length=30)
+    email: str | Undefined = Field(UNDEFINED)
+    password: str | Undefined = Field(UNDEFINED, min_length=8, max_length=82)
+    old_password: str | Undefined = Field(UNDEFINED, min_length=8, max_length=82)
 
 
 @version('/users/@me', 1, router, 'PATCH')
-@flaskparser.use_args(
-    {
-        'username': fields.String(required=False, allow_none=False, validate=validate.Length(1, 30)),
-        'email': fields.String(
-            required=False,
-            allow_none=False,
-            validate=(validate.Email(), validate.Length(min=5, max=25)),
-        ),
-        'password': fields.String(
-            required=False,
-            allow_none=False,
-            validate=validate.Length(
-                min=8,
-                max=30,
-            ),
-        ),
-        'old_password': fields.String(
-            required=False,
-            allow_none=False,
-            validate=validate.Length(
-                min=8,
-                max=30,
-            ),
-        ),
-    }
-)
-def patch_me(data: dict) -> None:
-    if g.user is None:
-        abort_auth()
-
+async def patch_me(
+    request: Request, data: PatchMe, user: User = Depends(uses_auth), session: AsyncSession = Depends(uses_db)
+) -> None:
     if data == {}:
-        return prepare_user(g.user, True)
+        return prepare_user(user, True)
 
-    password = data.get('password')
-    old_password = data.get('old_password')
-
-    if password is None and old_password:
-        abort(proper({'_errors': {'password': ['Missing field']}}, status=400))
+    password = data.password
+    old_password = data.old_password
 
     if password and not old_password:
-        abort(proper({'_errors': {'old_password': ['Missing field']}}, status=400))
+        raise HTTPException(400, 'Missing old password')
 
-    is_pw = bcrypt.checkpw(old_password.encode(), g.user['password'].encode())
+    if password:
+        try:
+            pw_hsh.verify(user.password, old_password)
+        except VerifyMismatchError:
+            raise HTTPException(401, 'Invalid password')
 
-    if not is_pw:
-        abort(proper({'_errors': 'Invalid Password'}, status=400))
-
-    user = g.user
-    user['password'] = password
+        user.password = pw_hsh.hash(password)
 
     if data.get('email'):
-        user['email'] = data['email']
+        user.email = data.email
 
     if data.get('username'):
-        other_user = db.users.find_one({'username': data['username'], 'discriminator': user['discriminator']})
+        other_user = await User.exists(session, data.username, user.discriminator)
 
-        if other_user is None:
-            user['username'] = data['username']
+        if other_user is False:
+            user.username = data.username
         else:
             discrim: str | None = None
             for _ in range(9):
                 d = generate_discriminator()
-                q = len(
-                    list(
-                        db.users.find({'username': data['username'], 'discriminator': data['discriminator']})
-                    )
-                )
-                if q >= 1:
+                if await User.exists(session, data.username, discrim):
                     continue
                 discrim = d
                 break
 
             if discrim is None:
-                abort(proper({'_errors': {'username': ['Discriminator not available']}}, 400))
+                raise HTTPException(400, 'Discriminator unavailable')
 
-            user['username'] = data['username']
-            data['discriminator'] = discrim
+            user.username = data.username
+            user.discriminator = discrim
 
-    db.users.update_one({'_id': g.user['_id']}, user)
+    session.add(user)
+    await session.commit()
 
     usr = prepare_user(user, True)
-    publish_to_user(user['_id'], 'USER_UPDATE', usr)
+    await publish_to_user(user.id, 'USER_UPDATE', usr)
 
     return usr
 
 
 @version('/users/@me', 1, router, 'GET')
-@limiter.limit('5/second')
-def get_me() -> None:
-    if g.user is None:
-        abort_auth()
+async def get_me(request: Request, user: User = Depends(uses_auth)) -> None:
+    return prepare_user(user, True)
 
-    return prepare_user(g.user, True)
+
+class Login(BaseModel):
+    email: EmailStr
+    password: str
 
 
 @version('/login', 1, router, 'POST')
-@limiter.limit('5/minute')
-@flaskparser.use_args(
-    {
-        'email': fields.String(
-            required=True,
-            allow_none=False,
-            validate=(validate.Email(), validate.Length(min=5, max=25)),
-        ),
-        'password': fields.String(
-            required=True,
-            allow_none=False,
-            validate=validate.Length(
-                min=8,
-                max=30,
-            ),
-        ),
-    }
-)
-def login(data: dict) -> None:
-    user = db.users.find_one({'email': data['email']})
+async def login(request: Request, data: Login, session: AsyncSession = Depends(uses_db)) -> None:
+    user = await User.get_email(session, data.email)
 
     if user is None:
         abort_auth()
 
-    true_pw = bcrypt.checkpw(data['password'].encode(), user['password'].encode())
+    try:
+        pw_hsh.verify(user.password, data.password)
+    except VerifyMismatchError:
+        raise HTTPException(401, 'Invalid password')
 
-    if not true_pw:
-        abort_auth()
+    usr = prepare_user(user, True)
+    usr['token'] = await create_token(user.id, user.password)
 
-    usr = dict(user)
-    usr['token'] = auth.form(user['_id'], user['password'])
-
-    return prepare_user(usr, True)
+    return usr

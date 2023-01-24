@@ -14,17 +14,23 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import asyncio
-import multiprocessing
+from datetime import datetime
+from enum import Enum
 
-import uvloop
+from sqlalchemy import BigInteger, ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+from .base import Base
 
-wsgi_app = 'derailed.app:app'
-loglevel = 'info'
-proxy_allow_ips = '*'
-bind = ['0.0.0.0:8080']
-backlog = 1024
-workers = (2 * multiprocessing.cpu_count()) + 1
-worker_class = 'uvicorn.workers.UvicornWorker'
+
+class ActivityType(Enum):
+    CUSTOM = 0
+
+
+class Activity(Base):
+    __tablename__ = 'activities'
+
+    user_id: Mapped[int] = mapped_column(BigInteger(), ForeignKey('users.id'), primary_key=True)
+    type: Mapped[ActivityType]
+    created_at: Mapped[datetime]
+    content: Mapped[str] = mapped_column(String(15))

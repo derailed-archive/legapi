@@ -14,17 +14,8 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
-import asyncio
-import multiprocessing
+from sqlalchemy.orm import DeclarativeBase
 
-import uvloop
 
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-
-wsgi_app = 'derailed.app:app'
-loglevel = 'info'
-proxy_allow_ips = '*'
-bind = ['0.0.0.0:8080']
-backlog = 1024
-workers = (2 * multiprocessing.cpu_count()) + 1
-worker_class = 'uvicorn.workers.UvicornWorker'
+class Base(DeclarativeBase):
+    ...

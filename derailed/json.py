@@ -1,7 +1,20 @@
-from typing import Any
+"""
+Copyright (C) 2021-2023 Derailed.
 
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 import msgspec
-from flask import Response
 
 
 class Decoder:
@@ -21,7 +34,3 @@ class Encoder:
     def encode(self, obj):
         # decode back to str, as orjson returns bytes
         return msgspec.json.encode(obj).decode('utf-8')
-
-
-def proper(data: dict[str, Any], status: int = 200) -> Response:
-    return Response(msgspec.json.encode(data), status, content_type='application/json')

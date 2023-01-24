@@ -1,19 +1,38 @@
+"""
+Copyright (C) 2021-2023 Derailed.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+import base64
+import binascii
 import json
+import math
 import os
-import re
 from typing import Any, NoReturn
 
-import flask_limiter.util
-import grpc
-from flask import Response, abort, g, request
-from flask_limiter import HEADERS, Limiter, RequestLimit
+import grpc.aio as grpc
+from fastapi import Depends, HTTPException, Path, Request, Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .authorizer import auth as auth_medium
-from .database import Channel, Guild, Member, Role, User, db
+from .database import get_db, to_dict, uses_db
 from .grpc import derailed_pb2_grpc
+from .grpc.auth import auth_pb2_grpc
+from .grpc.auth.auth_pb2 import CreateToken, NewToken, Valid, ValidateToken
 from .grpc.derailed_pb2 import GetGuildInfo, Message, Publ, RepliedGuildInfo, UPubl
 from .identification import medium
-from .json import proper
+from .models import Channel, Guild, Member, User
+from .models.channel import ChannelType
 from .permissions import (
     GuildPermission,
     has_bit,
@@ -22,123 +41,203 @@ from .permissions import (
 )
 
 
-def authorize_user() -> User | None:
-    auth = request.headers.get('Authorization', None)
+async def uses_auth(request: Request, session: AsyncSession = Depends(uses_db)) -> User:
+    token = request.headers.get('Authorization', None)
 
-    if auth is None or auth == '':
-        return None
+    if token is None or token == '':
+        abort_auth()
 
-    v = auth_medium.verify(auth)
+    splits = token.split('.')
 
-    if v is None:
-        return None
+    try:
+        user_id = splits[0]
+        user_id = base64.urlsafe_b64decode(user_id).decode()
+    except (binascii.Error, UnicodeDecodeError, IndexError):
+        abort_auth()
 
-    return dict(v)
-
-
-def get_key_value() -> str:
-    user = g.get('user', None)
+    user = await User.get(session, int(user_id))
 
     if user is None:
-        return flask_limiter.util.get_remote_address()
+        abort_auth()
+
+    is_valid = await valid_authorization(user_id, user.password, token)
+
+    if is_valid is False:
+        abort_auth()
+
+    return user
+
+
+async def uses_no_raises_auth(request: Request, session: AsyncSession = Depends(uses_db)) -> User | None:
+    token = request.headers.get('Authorization', None)
+
+    if token is None or token == '':
+        return None
+
+    splits = token.split('.')
+
+    try:
+        user_id = splits[0]
+        user_id = base64.urlsafe_b64decode(user_id).decode()
+    except (binascii.Error, UnicodeDecodeError, IndexError):
+        return None
+
+    user = await User.get(session, int(user_id))
+
+    if user is None:
+        return None
+
+    is_valid = await valid_authorization(user_id, user.password, token)
+
+    if is_valid is False:
+        return None
+
+    return user
+
+
+async def get_key(request: Request) -> str:
+    """
+    Gets the rate limit key for this request
+    """
+    session = get_db()
+
+    user = await uses_no_raises_auth(request, session)
+
+    if user:
+        return str(user.id)
     else:
-        return user['_id']
+        # TODO
+        return ''
 
 
-def respond_rate_limited(limit: RequestLimit) -> Response:
-    return {'retry_at': limit.reset_at}
+async def default_callback(request: Request, response: Response, pexpire: int):
+    """
+    default callback when too many requests
+    :param request:
+    :param pexpire: The remaining milliseconds
+    :param response:
+    :return:
+    """
+    expire = math.ceil(pexpire / 1000)
 
-
-limiter = Limiter(
-    key_func=get_key_value,
-    default_limits=['50/second'],
-    headers_enabled=True,
-    header_name_mapping={HEADERS.RETRY_AFTER: 'X-RateLimit-Retry-After'},
-    storage_uri=os.getenv('STORAGE_URI', 'memory://'),
-    strategy='moving-window',
-    # I'd rather 500 than unsync'd rate limits
-    in_memory_fallback_enabled=False,
-    key_prefix='security.derailed.',
-)
+    raise HTTPException(429, {'type': 'rate_limited', 'retry_after': expire})
 
 
 def prepare_user(user: User, own: bool = False) -> dict[str, Any]:
+    user = to_dict(user)
+
     if not own:
         user.pop('email')
 
-    user.pop('password')
+    user.pop('password', None)
+    user.pop('deletor_job_id', None)
     return user
 
 
 def abort_auth() -> NoReturn:
-    abort(proper({'_errors': {'headers': {'authorization': ['invalid or missing']}}}, status=401))
+    raise HTTPException(401, 'Invalid Authorization')
 
 
 def abort_forb() -> NoReturn:
-    abort(proper({'_errors': ['You are forbidden from doing the following action']}, status=403))
+    raise HTTPException(403, 'Forbidden')
 
 
-user_channel = grpc.insecure_channel(os.getenv('USER_CHANNEL'))
-user_stub = derailed_pb2_grpc.UserStub(user_channel)
-guild_channel = grpc.insecure_channel(os.getenv('GUILD_CHANNEL'))
-guild_stub = derailed_pb2_grpc.GuildStub(guild_channel)
+user_stub = None
+guild_stub = None
+auth_stub = None
 
 
-def publish_to_user(user_id: str, event: str, data: dict[str, Any]) -> None:
-    user_stub.publish.future(UPubl(user_id=user_id, message=Message(event=event, data=json.dumps(data))))
+async def _init_stubs() -> None:
+    global user_stub
+    global guild_stub
+    global auth_stub
+    user_channel = grpc.insecure_channel(os.environ['USER_CHANNEL'])
+    user_stub = derailed_pb2_grpc.UserStub(user_channel)
+    guild_channel = grpc.insecure_channel(os.environ['GUILD_CHANNEL'])
+    guild_stub = derailed_pb2_grpc.GuildStub(guild_channel)
+    auth_channel = grpc.insecure_channel(os.environ['AUTH_CHANNEL'])
+    auth_stub = auth_pb2_grpc.AuthorizationStub(auth_channel)
 
 
-def publish_to_guild(guild_id: str, event: str, data: dict[str, Any]) -> None:
-    guild_stub.publish.future(Publ(guild_id=guild_id, message=Message(event=event, data=json.dumps(data))))
+async def publish_to_user(user_id: Any, event: str, data: dict[str, Any]) -> None:
+    if user_stub is None:
+        await _init_stubs()
+
+    await user_stub.publish(
+        UPubl(user_id=str(user_id), message=Message(event=event, data=json.dumps(dict(data))))
+    )
 
 
-def get_guild_info(guild_id: str) -> RepliedGuildInfo:
-    return guild_stub.get_guild_info(GetGuildInfo(guild_id=guild_id))
+async def publish_to_guild(guild_id: Any, event: str, data: dict[str, Any]) -> None:
+    if guild_stub is None:
+        await _init_stubs()
+
+    await guild_stub.publish(
+        Publ(guild_id=str(guild_id), message=Message(event=event, data=json.dumps(dict(data))))
+    )
 
 
-def prepare_guild(guild_id: int) -> Guild:
-    guild_id = str(guild_id)
+async def get_guild_info(guild_id: int) -> RepliedGuildInfo:
+    if guild_stub is None:
+        await _init_stubs()
 
-    guild = db.guilds.find_one({'_id': guild_id})
+    return await guild_stub.get_guild_info(GetGuildInfo(guild_id=str(guild_id)))
+
+
+async def create_token(user_id: str | int, password: str) -> str:
+    if auth_stub is None:
+        await _init_stubs()
+
+    # stringify user_id just in case it isn't already
+    req: NewToken = await auth_stub.create(CreateToken(user_id=str(user_id), password=password))
+
+    return req.token
+
+
+async def valid_authorization(user_id: str, password: str, token: str) -> bool:
+    if auth_stub is None:
+        await _init_stubs()
+
+    req: Valid = await auth_stub.validate(ValidateToken(user_id=user_id, password=password, token=token))
+
+    return req.valid
+
+
+async def prepare_guild(session: AsyncSession, guild_id: int) -> Guild:
+    guild = await Guild.get(session, guild_id)
 
     if guild is None:
-        abort(proper({'_errors': 'Guild does not exist'}, status=404))
+        raise HTTPException(404, 'Guild not found')
 
     return guild
 
 
-def prepare_membership(guild_id: int) -> tuple[Guild, Member]:
-    if g.user is None:
-        abort_auth()
+async def prepare_membership(
+    guild_id: int = Path(),
+    user: User = Depends(uses_auth),
+    session: AsyncSession = Depends(uses_db),
+) -> tuple[Guild, Member]:
+    guild = await prepare_guild(session, guild_id)
 
-    guild = prepare_guild(guild_id)
-
-    member = db.members.find_one({'user_id': g.user['_id']})
+    member = await Member.get(session, user.id, guild.id)
 
     if member is None:
-        abort(proper({'_errors': 'User is not a member of Guild'}, status=403))
+        abort_forb()
 
-    member = dict(member)
-    member.pop('_id')
-
-    member['user'] = db.users.find_one({'_id': member['user_id']})
-
-    return (dict(guild), member)
+    return (guild, member)
 
 
 def prepare_permissions(member: Member, guild: Guild, required_permissions: list[int]) -> None:
-    if guild['owner_id'] == member['user_id']:
+    if guild.owner_id == member.user_id:
         return
 
-    roles = member['role_ids']
+    roles = member.roles
     permsl: list[GuildPermission] = []
 
-    for role_id in roles:
-        role: Role = db.roles.find_one({'_id': role_id})
-
+    for role in roles:
         permsl.append(
             unwrap_guild_permissions(
-                allow=role['permissions']['allows'], deny=role['permissions']['deny'], pos=role['position']
+                allow=role.permissions.allow, deny=role.permissions.deny, pos=role.position
             )
         )
 
@@ -146,97 +245,88 @@ def prepare_permissions(member: Member, guild: Guild, required_permissions: list
 
     for perm in required_permissions:
         if not has_bit(perms, perm):
-            abort(proper({'_errors': ['Invalid Permissions']}, status=403))
+            raise HTTPException(403, 'Invalid permissions')
 
 
-CHANNEL_REGEX = re.compile(r'^[a-z0-9](?:[a-z0-9-_]{0,30}[a-z0-9])?$')
+CHANNEL_REGEX = '^[a-z0-9](?:[a-z0-9-_]{1,32}[a-z0-9])?$'
 
 
-def prepare_channel_position(wanted_position: int, parent_id: int, guild: Guild) -> None:
-    guild_id = guild['_id']
-
-    c = db.channels.find_one({'guild_id': guild_id, 'position': wanted_position})
-
-    if c is None:
-        return
-
-    guild_channels = db.channels.find({'guild_id': guild_id, 'parent_id': parent_id})
-
-    for channel in guild_channels:
-        if channel['position'] >= wanted_position:
-            channel['position'] += 1
-
-        db.channels.update_one({'_id': channel['_id'], 'parent_id': parent_id}, channel)
-
-
-def prepare_category_position(wanted_position: int, guild: Guild) -> None:
-    guild_id = guild['_id']
-
-    c = db.channels.find_one({'guild_id': guild_id, 'position': wanted_position})
+async def prepare_channel_position(
+    session: AsyncSession, wanted_position: int, parent_id: int | None, guild: Guild
+) -> None:
+    c = await Channel.get_for_pos(session, wanted_position, guild.id, parent_id)
 
     if c is None:
         return
 
-    guild_channels = db.channels.find({'guild_id': guild_id})
+    guild_channels = await Channel.get_via(session, parent_id, guild.id)
 
     for channel in guild_channels:
-        if channel['type'] != 0:
+        if channel.position >= wanted_position:
+            channel.position += 1
+            session.add(channel)
+
+    await session.commit()
+
+
+async def prepare_category_position(session: AsyncSession, wanted_position: int, guild: Guild) -> None:
+    c = await Channel.get_for_pos(session, wanted_position, guild.id)
+
+    if c is None:
+        return
+
+    guild_channels = await Channel.get_via(session, None, guild.id)
+
+    for channel in guild_channels:
+        if channel.type != ChannelType.CATEGORY:
             continue
 
-        if channel['position'] >= wanted_position:
-            channel['position'] += 1
+        if channel.position >= wanted_position:
+            channel.position += 1
+            session.add(channel)
 
-        db.channels.update_one({'_id': channel['_id']}, channel)
+    await session.commit()
 
 
-def prepare_guild_channel(channel_id: int, guild: Guild) -> Channel:
+async def prepare_guild_channel(session: AsyncSession, channel_id: int, guild: Guild) -> Channel:
     channel_id = str(channel_id)
 
-    channel = db.channels.find_one({'_id': channel_id, 'guild_id': guild['_id']})
+    channel = await Channel.get(session, channel_id, guild.id)
 
     if channel is None:
-        abort(proper({'_errors': ['Channel not found']}, status=404))
+        raise HTTPException(404, 'Channel not found')
 
     return channel
 
 
-def prepare_channel(channel_id: int) -> Channel:
-    if g.get('user', None) is None:
-        abort_auth()
-
+async def prepare_channel(session: AsyncSession, channel_id: int) -> Channel:
     channel_id = str(channel_id)
 
-    channel = db.channels.find_one({'_id': channel_id})
+    channel = await Channel.get(session, channel_id)
 
     if channel is None:
-        abort(proper({'_errors': ['Channel not found']}, status=404))
+        raise HTTPException(404, 'Channel not found')
 
     return channel
 
 
-def plain_resp() -> Response:
-    return Response('', 204)
+def prepare_default_channels(guild: Guild, session: AsyncSession) -> None:
+    cat = Channel(
+        id=medium.snowflake(),
+        name='general',
+        parent_id=None,
+        type=ChannelType.CATEGORY,
+        guild_id=guild.id,
+        position=1,
+    )
+    general = Channel(
+        id=medium.snowflake(),
+        name='general',
+        parent_id=cat.id,
+        type=ChannelType.TEXT,
+        last_message_id=None,
+        guild_id=guild.id,
+        position=1,
+    )
 
-
-def prepare_default_channels(guild: Guild) -> None:
-    cat = {
-        '_id': medium.snowflake(),
-        'name': 'general',
-        'parent_id': None,
-        'type': 0,
-        'last_message_id': None,
-        'guild_id': guild['_id'],
-        'position': 1,
-    }
-    general = {
-        '_id': medium.snowflake(),
-        'name': 'general',
-        'parent_id': cat['_id'],
-        'type': 1,
-        'last_message_id': None,
-        'guild_id': guild['_id'],
-        'position': 1,
-    }
-
-    db.channels.insert_one(cat)
-    db.channels.insert_one(general)
+    session.add_all([cat, general])

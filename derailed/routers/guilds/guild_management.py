@@ -1,63 +1,95 @@
-from flask import Blueprint, g, jsonify
-from webargs import fields, flaskparser, validate
+"""
+Copyright (C) 2021-2023 Derailed.
 
-from ...database import db
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field
+
+from ...database import AsyncSession, to_dict, uses_db
 from ...identification import medium, version
+from ...models.guild import Guild
+from ...models.member import Member
+from ...models.user import User
 from ...permissions import DEFAULT_PERMISSIONS, GuildPermissions
 from ...powerbase import (
-    abort_auth,
     prepare_default_channels,
     prepare_membership,
     prepare_permissions,
     publish_to_guild,
     publish_to_user,
+    uses_auth,
 )
+from ...undefinable import UNDEFINED, Undefined
 
-router = Blueprint('guild_management', __name__)
-
-
-@version('/guilds', 1, router, 'POST')
-@flaskparser.use_args(
-    {'name': fields.String(required=True, allow_none=False, validate=validate.Length(1, 30))}
-)
-def create_guild(data: dict) -> None:
-    if g.user is None:
-        abort_auth()
-
-    guild = {
-        '_id': medium.snowflake(),
-        'name': data['name'],
-        'owner_id': g.user['_id'],
-        'flags': 0,
-        'permissions': {'allow': str(DEFAULT_PERMISSIONS)},
-    }
-
-    db.guilds.insert_one(guild)
-    db.members.insert_one({'user_id': g.user['_id'], 'guild_id': guild['_id'], 'nick': None, 'role_ids': []})
-    db.settings.update_one({'_id': g.user['_id']}, {'$push': {'guild_order': guild['_id']}})
-
-    prepare_default_channels(guild)
-
-    publish_to_user(user_id=g.user['_id'], event='GUILD_CREATE', data=guild)
-
-    return dict(guild), 201
+router = APIRouter()
 
 
-@version('/guilds/<int:guild_id>', 1, router, 'PATCH')
-@flaskparser.use_args(
-    {'name': fields.String(required=False, allow_none=False, validate=validate.Length(1, 30))}
-)
-def modify_guild(data: dict, guild_id: int) -> None:
-    guild, member = prepare_membership(guild_id)
+class CreateGuild(BaseModel):
+    name: str = Field(min_length=1, max_length=32)
 
-    if data == {}:
-        return dict(guild)
 
-    prepare_permissions(member, guild, [GuildPermissions.MODIFY_GUILD])
+@version('/guilds', 1, router, 'POST', status_code=201)
+async def create_guild(
+    request: Request,
+    data: CreateGuild,
+    session: AsyncSession = Depends(uses_db),
+    user: User = Depends(uses_auth),
+) -> None:
+    guild = Guild(
+        id=medium.snowflake(),
+        name=data.name,
+        owner_id=user.id,
+        flags=0,
+        permissions=DEFAULT_PERMISSIONS,
+    )
+    session.add(guild)
+    member = Member(user_id=user.id, guild_id=guild.id, nick=None)
+    session.add(member)
 
-    gid = dict(guild)
-    gid['name'] = data['name']
+    await session.commit()
 
-    publish_to_guild(gid['_id'], 'GUILD_UPDATE', gid)
+    prepare_default_channels(guild, session)
 
-    return gid
+    await session.commit()
+
+    await publish_to_user(user_id=user.id, event='GUILD_CREATE', data=to_dict(guild))
+
+    return to_dict(guild)
+
+
+class ModifyGuild(BaseModel):
+    name: str | Undefined = Field(UNDEFINED, min_length=1, max_length=30)
+
+
+@version('/guilds/{guild_id}', 1, router, 'PATCH')
+async def modify_guild(
+    request: Request, guild_id: int, data: CreateGuild, session: AsyncSession = Depends(uses_db)
+) -> None:
+    guild, member = await prepare_membership(guild_id)
+
+    if not data.name:
+        return to_dict(guild)
+
+    await prepare_permissions(member, guild, [GuildPermissions.MODIFY_GUILD])
+
+    guild.name = data.name
+
+    session.add(guild)
+
+    await session.commit()
+
+    await publish_to_guild(guild.id, 'GUILD_UPDATE', to_dict(guild))
+
+    return to_dict(guild)

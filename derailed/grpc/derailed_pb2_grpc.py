@@ -12,6 +12,7 @@ class GuildStub(object):
         """Constructor.
 
         Args:
+        ----
             channel: A grpc.Channel.
         """
         self.publish = channel.unary_unary(
@@ -129,6 +130,7 @@ class UserStub(object):
         """Constructor.
 
         Args:
+        ----
             channel: A grpc.Channel.
         """
         self.publish = channel.unary_unary(

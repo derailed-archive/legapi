@@ -1,178 +1,213 @@
-from flask import Blueprint, abort
-from webargs import fields, flaskparser, validate
+"""
+Copyright (C) 2021-2023 Derailed.
 
-from ...database import db
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ...database import to_dict, uses_db
 from ...identification import medium, version
-from ...json import proper
+from ...models.channel import Channel, ChannelType
+from ...models.user import User
 from ...permissions import GuildPermissions
 from ...powerbase import (
     CHANNEL_REGEX,
-    plain_resp,
     prepare_category_position,
     prepare_channel_position,
     prepare_guild_channel,
     prepare_membership,
     prepare_permissions,
     publish_to_guild,
+    uses_auth,
 )
+from ...undefinable import UNDEFINED, Undefined
 
-router = Blueprint('guild_channels', __name__)
+router = APIRouter()
 
 
-@version('/guilds/<int:guild_id>/channels/<int:channel_id>', 1, router, 'GET')
-def get_channel(guild_id: int, channel_id: int) -> None:
-    guild, member = prepare_membership(guild_id)
+@version('/guilds/{guild_id}/channels/{channel_id}', 1, router, 'GET')
+async def get_channel(
+    guild_id: int,
+    channel_id: int,
+    request: Request,
+    session: AsyncSession = Depends(uses_db),
+    user: User = Depends(uses_auth),
+) -> None:
+    guild, member = await prepare_membership(guild_id, user, session)
 
-    channel = prepare_guild_channel(channel_id, guild)
+    channel = await prepare_guild_channel(session, channel_id, guild)
 
     prepare_permissions(member, guild, [GuildPermissions.VIEW_CHANNEL.value])
 
     return channel
 
 
-@version('/guilds/<int:guild_id>/channels', 1, router, 'POST')
-@flaskparser.use_args(
-    {
-        'type': fields.Integer(strict=True, validate=validate.OneOf([0, 1]), required=True, allow_none=False),
-        'name': fields.String(
-            required=True,
-            allow_none=False,
-            validate=(validate.Length(2, 32), validate.Regexp(CHANNEL_REGEX, error='Invalid channel name')),
-        ),
-        'position': fields.Integer(required=False, strict=True, validate=validate.Range(1, 100)),
-        'parent_id': fields.Integer(required=False),
-    }
-)
-def create_channel(data: dict, guild_id: int) -> None:
-    guild, member = prepare_membership(guild_id)
-    position = data.get('position')
-    parent_id = str(data.get('parent_id'))
+@version('/guilds/{guild_id}/channels', 1, router, 'GET')
+async def get_channels(
+    guild_id: int, request: Request, session: AsyncSession = Depends(uses_db), user: User = Depends(uses_auth)
+) -> None:
+    guild, _ = await prepare_membership(guild_id, user, session)
+
+    # TODO: check permissions
+    channels = await Channel.get_all(session, guild.id)
+
+    return to_dict(channels)
+
+
+class CreateChannel(BaseModel):
+    type: ChannelType
+    name: str = Field(regex=CHANNEL_REGEX)
+    position: int | Undefined = Field(UNDEFINED, gt=0, lt=500)
+    parent_id: int | Undefined = Field(UNDEFINED)
+
+
+@version('/guilds/{guild_id}/channels', 1, router, 'POST', status_code=201)
+async def create_channel(
+    data: CreateChannel,
+    guild_id: int,
+    request: Request,
+    session: AsyncSession = Depends(uses_db),
+    user: User = Depends(uses_auth),
+) -> None:
+    guild, member = await prepare_membership(guild_id, user, session)
 
     prepare_permissions(member, guild, [GuildPermissions.CREATE_CHANNELS.value])
 
-    if parent_id is not None:
-        parent = db.channels.find_one({'guild_id': str(guild_id), '_id': str(parent_id)})
+    if data.parent_id:
+        parent = await Channel.get(session, data.parent_id, guild_id)
 
         if parent is None:
-            abort(proper({'_errors': {'parent_id': ['Invalid channel']}}, 400))
+            raise HTTPException(400, 'Parent channel does not exist')
 
-        if (parent['type'] != 0) or (data['type'] == 0):
-            abort(proper({'_errors': {'parent_id': ['Invalid type']}}, 400))
+        if parent.type != ChannelType.CATEGORY or data.type == ChannelType.CATEGORY:
+            raise HTTPException('Parent is not of right type, or child is not of right type')
 
-    channel_count = db.channels.count_documents({'guild_id': str(guild_id)})
+    channel_count = await Channel.count(session, guild.id)
 
-    if channel_count == 100:
-        abort(proper({'_errors': 'Channel limit reached'}, 400))
+    if channel_count == 500:
+        raise HTTPException(400, 'Max channel count already reached')
 
-    if data['type'] == 0:
-        highest_channel = (
-            db.channels.find({'guild_id': str(guild_id), 'type': 0}).sort({'position': -1}).limit(1)
-        )
+    if data.type == 0:
+        highest_channel = await Channel.highest(session, guild_id)
     else:
-        highest_channel = db.channels.find({'guild_id': str(guild_id)}).sort({'position': -1}).limit(1)
+        highest_channel = await Channel.highest(session, guild_id, category=data.parent_id)
 
-    for c in highest_channel:
-        if ((c['position'] + 1) < data['position']) and position is not None:
-            abort(proper({'_errors': {'position': ['Invalid position']}}, 400))
-        elif position is None:
-            position = c['position'] + 1
-
-    if data['type'] == 0:
-        prepare_category_position(position, guild)
+    if (highest_channel.position + 1) < data.position and position is not None:
+        raise HTTPException(400, 'Channel position too high')
     else:
-        prepare_channel_position(position, parent_id, guild)
+        position = (highest_channel.position + 1) if data.position is UNDEFINED else data.position
 
-    channel = {
-        '_id': medium.snowflake(),
-        'type': data['type'],
-        'parent_id': parent_id,
-        'name': data['name'],
-        'guild_id': str(guild_id),
-        'last_message_id': None,
-    }
+    if data.type == 0:
+        await prepare_category_position(session, position, guild)
+    else:
+        await prepare_channel_position(session, position, data.parent_id, guild)
 
-    db.channels.insert_one(channel)
+    channel = Channel(
+        id=medium.snowflake(),
+        type=data.type,
+        parent_id=parent.id,
+        name=data.name,
+        guild_id=guild_id,
+        last_message_id=None,
+    )
 
-    publish_to_guild(str(guild_id), 'CHANNEL_CREATE', channel)
+    session.add(channel)
+    await session.commit()
 
-    return channel, 201
+    await publish_to_guild(guild_id, 'CHANNEL_CREATE', to_dict(channel))
+
+    return channel
 
 
-@version('/guilds/<int:guild_id>/channels/<int:channel_id>', 1, router, 'PATCH')
-@flaskparser.use_args(
-    {
-        'name': fields.String(
-            required=True,
-            allow_none=False,
-            validate=(validate.Length(2, 32), validate.Regexp(CHANNEL_REGEX, error='Invalid channel name')),
-        ),
-        'position': fields.Integer(required=False, strict=True, validate=validate.Range(1, 100)),
-        'parent_id': fields.Integer(required=False),
-    }
-)
-def modify_channel(data: dict, guild_id: int, channel_id: int) -> None:
-    guild, member = prepare_membership(guild_id)
+class ModifyChannel(BaseModel):
+    name: str | Undefined = Field(UNDEFINED, regex=CHANNEL_REGEX)
+    position: int | Undefined = Field(UNDEFINED, gt=0, lt=500)
+    parent_id: int | Undefined = Field(UNDEFINED)
+
+
+@version('/guilds/{guild_id}/channels/{channel_id}', 1, router, 'PATCH')
+async def modify_channel(
+    data: ModifyChannel,
+    request: Request,
+    guild_id: int,
+    channel_id: int,
+    session: AsyncSession = Depends(uses_db),
+    user: User = Depends(uses_auth),
+) -> None:
+    guild, member = await prepare_membership(guild_id, user, session)
 
     prepare_permissions(member, guild, [GuildPermissions.MODIFY_CHANNELS.value])
 
-    channel = prepare_guild_channel(channel_id, guild)
+    channel = await prepare_guild_channel(session, channel_id, guild)
 
-    position = data.get('position')
-    parent_id = data.get('parent_id', str)
-    channel_copy = channel.copy()
+    mods = {}
 
-    if data.get('name'):
-        channel_copy['name'] = data['name']
+    if data.name:
+        mods['name'] = data.name
 
-    if parent_id != str or position:
-        if data['type'] == 0:
-            highest_channel = (
-                db.channels.find({'guild_id': str(guild_id), 'type': 0}).sort({'position': -1}).limit(1)
-            )
+    if data.parent_id or data.position:
+        if channel.type == ChannelType.CATEGORY:
+            highest_channel = await Channel.highest(session, guild_id)
         else:
-            highest_channel = db.channels.find({'guild_id': str(guild_id)}).sort({'position': -1}).limit(1)
+            highest_channel = await Channel.highest(session, guild_id, category=data.parent_id)
 
-    if parent_id != str:
-        parent_id = str(parent_id)
+    if data.parent_id:
+        parent = await Channel.get(session, data.parent_id, guild.id)
 
-        parent = db.channels.find_one({'guild_id': str(guild_id), '_id': str(parent_id)})
+        if parent is None or parent.type != ChannelType.CATEGORY or data.type == ChannelType.CATEGORY:
+            raise HTTPException(400, 'Parent is not of right type, or child is not of right type')
 
-        if parent is None or (parent['type'] != 0) or (data['type'] == 0):
-            abort(proper({'_errors': {'parent_id': ['Invalid type']}}, 400))
-
-        prepare_channel_position(highest_channel['position'] + 1, parent_id, guild)
-        channel_copy['parent_id'] = parent_id
+        await prepare_channel_position(session, highest_channel['position'] + 1, data.parent_id, guild)
+        mods['parent_id'] = data.parent_id
 
     if position:
-        for c in highest_channel:
-            if ((c['position'] + 1) < data['position']) and position is not None:
-                abort(proper({'_errors': {'position': ['Invalid position']}}, 400))
-            elif position is None:
-                position = c['position'] + 1
-
-        if channel['type'] == 0:
-            prepare_category_position(position, guild)
+        if (highest_channel.position + 1) < data.position and position is not None:
+            raise HTTPException(400, 'Channel position too high')
         else:
-            prepare_channel_position(position, channel_copy['parent_id'], guild)
-        channel_copy['position'] = position
+            position = (highest_channel.position + 1) if data.position is UNDEFINED else data.position
 
-    db.channels.update_one({'_id': channel['_id']}, channel_copy)
+        if data.type == 0:
+            await prepare_category_position(session, position, guild)
+        else:
+            await prepare_channel_position(session, position, data.parent_id, guild)
+        mods['position'] = position
 
-    publish_to_guild(guild['_id'], 'CHANNEL_UPDATE', channel_copy)
+    await channel.modify(session, **mods)
 
-    return channel_copy
+    await publish_to_guild(guild.id, 'CHANNEL_UPDATE', to_dict(channel))
+
+    return to_dict(channel)
 
 
-@version('/guilds/<int:guild_id>/channels/<int:channel_id>', 1, router, 'DELETE')
-def delete_channel(guild_id: int, channel_id: int) -> None:
-    guild, member = prepare_membership(guild_id)
+@version('/guilds/{guild_id}/channels/{channel_id}', 1, router, 'DELETE', status_code=204)
+async def delete_channel(
+    guild_id: int,
+    channel_id: int,
+    request: Request,
+    session: AsyncSession = Depends(uses_db),
+    user: User = Depends(uses_auth),
+) -> None:
+    guild, member = await prepare_membership(guild_id, user, session)
 
     prepare_permissions(member, guild, [GuildPermissions.MODIFY_CHANNELS.value])
 
-    channel = prepare_guild_channel(channel_id, guild)
+    channel = await prepare_guild_channel(session, channel_id, guild)
 
-    db.channels.delete_one({'_id': channel['_id']})
+    await channel.delete(session)
 
-    publish_to_guild(guild['_id'], 'CHANNEL_DELETE', {'channel_id': channel['_id'], 'guild_id': guild['_id']})
+    await publish_to_guild(guild.id, 'CHANNEL_DELETE', {'channel_id': channel.id, 'guild_id': guild.id})
 
-    return plain_resp()
+    return ''

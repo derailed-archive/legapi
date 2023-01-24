@@ -1,99 +1,73 @@
+"""
+Copyright (C) 2021-2023 Derailed.
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 import os
 from datetime import datetime
-from typing import Literal, NotRequired, TypedDict
+from inspect import isbuiltin, isfunction, ismethod
+from typing import Any
 
-import pymongo
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-_client = pymongo.MongoClient(os.environ['MONGODB_URI'])
-db = _client.get_database('derailed')
-
-
-class User(TypedDict):
-    _id: str
-    username: str
-    discriminator: str
-    email: str
-    password: str
-    flags: int
-    system: bool
-    deletor_job_id: NotRequired[str]
-    suspended: bool
+engine = create_async_engine(
+    os.environ['PG_URI'],
+    future=True,
+)
 
 
-class Settings(TypedDict):
-    _id: str
-    status: str
-    guild_order: list[str]
+AsyncSessionFactory = async_sessionmaker(engine, autoflush=True, expire_on_commit=False, autobegin=True)
 
 
-class Permissions(TypedDict):
-    allow: str
-    deny: str
+async def uses_db():
+    session = AsyncSessionFactory()
+    try:
+        yield session
+    except:
+        await session.rollback()
+    finally:
+        await session.close()
 
 
-class Role(TypedDict):
-    _id: str
-    guild_id: str
-    name: str
-    permissions: Permissions
-    position: int
+def get_db() -> AsyncSession:
+    session: AsyncSession = AsyncSessionFactory()
+    return session
 
 
-class Guild(TypedDict):
-    _id: str
-    name: str
-    flags: int
-    owner_id: str
-    permissions: Permissions
+def to_dict(self) -> dict[str, Any]:
+    if isinstance(self, list):
+        return [to_dict(obj) for obj in self]
 
+    d = {}
+    for k in dir(self):
+        if k == '__dict__':
+            continue
 
-class Member(TypedDict):
-    user_id: str
-    guild_id: str
-    nick: str | None
-    role_ids: list[str]
+        attr = getattr(self, k)
 
+        if (
+            not isfunction(attr)
+            and k not in ['registry', 'mro', 'metadata']
+            and not k.startswith('_')
+            and not ismethod(attr)
+            and not isbuiltin(attr)
+        ):
+            d[k] = attr
 
-class Invite(TypedDict):
-    _id: str
-    guild_id: str
-    author_id: str
-
-
-class BaseActivity(TypedDict):
-    name: str
-    type: int
-    created_at: datetime
-
-
-class StatusableActivity(BaseActivity):
-    content: str
-
-
-class Presence(TypedDict):
-    _id: str
-    guild_id: str
-    device: Literal['mobile', 'desktop', 'web']
-    activities: list[StatusableActivity]
-    status: Literal['online', 'invisible', 'dnd']
-
-
-class Message(TypedDict):
-    _id: str
-    author_id: str
-    content: str
-    channel_id: str
-    timestamp: datetime
-    edited_timestamp: datetime | None
-
-
-class Channel(TypedDict):
-    _id: str
-    type: int
-    name: NotRequired[str | None]
-    last_message_id: NotRequired[str]
-    parent_id: NotRequired[str]
-    guild_id: NotRequired[str]
-    position: NotRequired[int]
-    message_deletor_job_id: NotRequired[str]
-    members: NotRequired[list[User]]
+            if isinstance(attr, int):
+                if attr > 2_147_483_647:
+                    d[k] = str(attr)
+            elif isinstance(attr, datetime):
+                d[k] = attr.isoformat()
+    return d
